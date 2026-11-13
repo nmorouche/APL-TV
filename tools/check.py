@@ -39,6 +39,10 @@ for s in scripts:
         if m.group(1) not in keys:
             keys.append(m.group(1))
 fr = set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(os.path.join(APP, "js", "lang-fr.js")), re.M))
+# this fork's own texts are in a file of their own (app/js/lang-fork.js, FORK.md)
+_fork_texts = os.path.join(APP, "js", "lang-fork.js")
+if os.path.exists(_fork_texts):
+    fr |= set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(_fork_texts), re.M))
 missing = [k for k in keys if k not in fr]
 if missing:
     errors.append("French translation missing for %d texts:\n  %s" % (len(missing), "\n  ".join(missing)))

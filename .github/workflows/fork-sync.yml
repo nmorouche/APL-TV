@@ -1,0 +1,58 @@
+name: Fork sync and release
+
+# This fork publishes its own updates (FORK.md). Every hour, and at each push to main:
+# when the project (Knikt/APL-TV) has published a new version, it is merged under this fork's
+# changes, the fork's number goes up, the project's checks run and the result is pushed to main,
+# where the screens installed from this fork read it (tools/fork-release.sh).
+on:
+  schedule:
+    - cron: "23 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "yes: publish a new number now. sync: also merge the project's main as it is."
+        type: choice
+        options: ["no", "yes", "sync"]
+        default: "no"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fork-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Sync with the project and publish
+    # never in the project itself, and not for the commits this job pushes
+    if: github.repository != 'Knikt/APL-TV' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # the job's own token is enough; a personal token in the secret SYNC_TOKEN also lets the
+          # project's changes to its workflow files through
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      # tools/check.py runs node --check on the scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync and release
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          FORCE: ${{ inputs.force || 'no' }}
+          HAS_SYNC_TOKEN: ${{ secrets.SYNC_TOKEN != '' && '1' || '' }}
+        run: bash tools/fork-release.sh

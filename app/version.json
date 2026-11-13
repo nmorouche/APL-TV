@@ -1,5 +1,5 @@
 {
- "version": "1.1.1",
+ "version": "1.1.1.1",
  "loader": 1,
  "reinstall": "1.0.1",
  "notes": "Your playlists sorted by themselves: countries and languages recognised in every category, the provider's separators and codes taken off. Also Polish football in Sports, tables for basketball, hockey and handball, and a frozen picture on Fire TV caught.",
@@ -17,6 +17,7 @@
  "scripts": [
   "js/lang-fr.js",
   "js/lang-pl.js",
+  "js/lang-fork.js",
   "js/i18n.js",
   "js/keys.local.js",
   "js/dev.local.js",

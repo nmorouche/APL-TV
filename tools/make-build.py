@@ -96,9 +96,27 @@ def write_compat():
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(css)
 
+# This fork's own texts (FORK.md), right after the project's tables. Added here rather than in the list above:
+# the project edits that list at each new file.
+if "js/lang-fork.js" not in SCRIPTS:
+    SCRIPTS.insert(SCRIPTS.index("js/lang-pl.js") + 1, "js/lang-fork.js")
+
+def fork_rev():
+    """A fork that publishes its own updates (FORK.md) numbers them after the project's version: fork/rev.json
+    holds how many it has published since that version, and 1.1.1 becomes 1.1.1.3 in version.json and build.js
+    (what the screens compare). config.xml keeps the project's number: a Tizen package only takes three."""
+    try:
+        with open(os.path.join(ROOT, "fork", "rev.json"), encoding="utf-8") as f:
+            return int(json.load(f).get("rev", 0))
+    except (OSError, ValueError):
+        return 0
+
 def build(notes=""):
     config = open(os.path.join(A, "config.xml"), encoding="utf-8").read()
     version = re.search(r'<widget[^>]*\sversion="([^"]+)"', config).group(1)
+    rev = fork_rev()
+    if rev:
+        version = "%s.%d" % (version, rev)
     for s in SCRIPTS + STYLES:
         if ".local." not in s and not os.path.exists(os.path.join(A, s)):
             sys.exit("missing file: " + s)
