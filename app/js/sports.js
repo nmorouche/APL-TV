@@ -1853,11 +1853,12 @@
     /* Made ready ahead: on the summary's button for a moment, the player loads hidden (YouTube's player takes 3 s
        of the TV's time to start; while it did, the video stuttered). OK then only says "play". */
     var prepTimerYt = null;
-    function ytPrepareSoon(v) {
+    function ytPrepareSoon(v, still) {
         clearTimeout(prepTimerYt);
         prepTimerYt = setTimeout(function () {
             if (!v || yt.open || ytFailed[v.id] || !TV.helper || !TV.helper.PORT || !ytHere() || (yt.pre && yt.pre.id === v.id)) return;
-            if (!sheet.open || sheet.zone !== "btns" || sheet.nav.index !== sheet.videoAt) return;
+            // still(): another page's own test (a title's trailer, detail.js); else a match's summary button
+            if (still ? !still() : (!sheet.open || sheet.zone !== "btns" || sheet.nav.index !== sheet.videoAt)) return;
             ytShell(v, true);
             yt.el.className = "ytp is-pre";
             yt.pre = { id: v.id, ready: false };
@@ -1921,7 +1922,7 @@
         if (now) now.textContent = mmss(yt.t);
         if (len) len.textContent = yt.d ? mmss(yt.d) : "";
         if (bar) bar.style.width = yt.d ? Math.min(100, 100 * yt.t / yt.d).toFixed(2) + "%" : "0";
-        if (hint) hint.textContent = yt.muted ? T("Press OK for the sound") : yt.st === 2 ? T("Paused · OK to play") : T("OK pause · ◀ ▶ 10 s · Back to the match");
+        if (hint) hint.textContent = yt.muted ? T("Press OK for the sound") : yt.st === 2 ? T("Paused · OK to play") : (yt.v && yt.v.hint) || T("OK pause · ◀ ▶ 10 s · Back to the match");
     }
     // the bar comes up with each press and goes after a few seconds, unless paused or muted
     function ytBar() {
@@ -2922,6 +2923,9 @@
     TV.views = TV.views || {};
     TV.views.sports = view;
     TV.sports = { open: openMatch, matches: function () { return matches; }, where: function (id) { return where[id]; } };
+    /* The YouTube player above, for the other pages (a title's trailer): open({ id, title, channel, hint }),
+       prepare(v, still) makes it ready ahead while still() says the button is still under the focus, drop() lets go */
+    TV.video = { open: openVideo, prepare: ytPrepareSoon, drop: ytDrop };
     /* Development builds: the test bench (other favourites, another country, a tab by name), nothing saved */
     if (TV.DEV) {
         TV.sports.test = function (o) {

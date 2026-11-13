@@ -32,8 +32,14 @@ While a channel plays full screen, **OK or ◀** opens the channel list. In this
   the channels and programmes again while the bar is hidden; with the bar shown (▲, ▶ or OK),
   ◀ ▶ move in time, and ⏪ ⏩ always do.
 
+- **A Trailer button on a movie's or a series' page**, right after Play, when TMDB knows a trailer
+  of the title on YouTube: the one in your language, else the English one. OK plays it inside
+  APL TV with the remote (OK pauses, ◀ ▶ 10 s, Back comes back to the page). A trailer YouTube
+  keeps for itself opens in the screen's YouTube app instead. Needs a TMDB key.
+
 The code is in `app/js/osd.js` (the player), `app/js/epg.js` (a channel's past programmes),
-`app/js/meta.js` (a programme's details), `app/js/live.js` and `app/css/tv.css`. Its texts, in
+`app/js/meta.js` (a programme's details, a title's trailer), `app/js/detail.js` (the Trailer
+button), `app/js/live.js` and `app/css/tv.css`. Its texts, in
 French and in Polish, are in a file of their own, `app/js/lang-fork.js`: the project's language
 files are left as they are, so that its new translations never conflict with these.
 

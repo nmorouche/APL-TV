@@ -15,6 +15,7 @@
     var root, inner, bgEl, item = null, meta = null, btnNav = null, zone = "btns", zones = ["btns"], isOpen = false, token = 0;
     var seasons = {}, seasonKeys = [], seasonIndex = 0, seasonEls = [], seasonRow = null, epStrip = null, tmdbTv = 0;
     var certInfo = null, mainEl, sectionEl, castStrip = null, castEl = null, extras = [], extraLists = {}, onCloseCb = null, history = [], lastClosed = null;
+    var trailerInfo = null;        // the title's trailer on YouTube ({ key, name }), once TMDB has said
 
     function build() {
         root = TV.$("detail");
@@ -41,7 +42,7 @@
         if (opts.push && item && isOpen) history.push(item);
         else if (opts.push && item && !isOpen && lastClosed) history.push(lastClosed);
         else if (!opts.push && !opts.back) history = [];
-        item = it; meta = null; certInfo = null; seasons = {}; seasonKeys = []; seasonIndex = 0; epStrip = null; castStrip = null; extras = []; extraLists = {}; zone = "btns"; tmdbTv = 0;
+        item = it; meta = null; certInfo = null; trailerInfo = null; seasons = {}; seasonKeys = []; seasonIndex = 0; epStrip = null; castStrip = null; extras = []; extraLists = {}; zone = "btns"; tmdbTv = 0;
         var my = ++token;
         isOpen = true;
         root.classList.add("is-open");
@@ -56,6 +57,7 @@
             meta = m;
             if (it.kind === "series") tmdbTv = m.tmdbId;
             if (m.backdrop) setBg(m.backdrop);
+            loadTrailer(my);
             drawSoon();
             loadExtras(my);
             if (TV.DEV) TV.log("detail complete in " + (Date.now() - t0) + " ms");
@@ -94,7 +96,7 @@
             meta = m;
             if (it.kind === "series") tmdbTv = m.tmdbId;
             if (changed && m.backdrop) setBg(m.backdrop);
-            if (changed) { drawSoon(); extraLists = {}; loadExtras(my); }
+            if (changed) { trailerInfo = null; loadTrailer(my); drawSoon(); extraLists = {}; loadExtras(my); }
             if (it.kind === "series") enrichSeason();
         }).catch(function (e) { TV.log("detail: " + e.message); });
         onCloseCb = opts.onClose || null;
@@ -105,10 +107,43 @@
         token++;
         lastClosed = item;
         isOpen = false;
+        if (TV.video) TV.video.drop();
         root.classList.remove("is-open");
         TV.popNav(screen);
         if (onCloseCb) onCloseCb();
         if (TV.shell) TV.shell.refreshView();
+    }
+
+    /* ---------- the trailer ----------
+       A Trailer button right after Play, when TMDB knows a trailer of the title on YouTube (in your language first).
+       OK plays it inside APL TV with the player of the Sports summaries: OK pauses, ◀ ▶ 10 s, Back comes back to
+       the page; a video YouTube keeps for itself opens in the screen's YouTube app instead. While the focus stays
+       on the button the player is made ready ahead, so it starts at once. */
+    function loadTrailer(my) {
+        if (!meta || !meta.tmdbId) return;
+        var kind = item.kind === "series" ? "tv" : "movie", known = TV.meta.trailerKnown(kind, meta.tmdbId);
+        if (known !== undefined) { trailerInfo = known; return; }
+        if (meta.trailer) trailerInfo = { key: meta.trailer, name: "" };      // what the title's own details gave, meanwhile
+        TV.meta.trailer(kind, meta.tmdbId).then(function (t) {
+            if (my !== token) return;
+            var had = trailerInfo && trailerInfo.key;
+            if (t || !had) trailerInfo = t;
+            if ((trailerInfo && trailerInfo.key) !== had) drawSoon();
+        });
+    }
+    function trailerVideo() {
+        return { id: trailerInfo.key, title: (meta && meta.title) || item.title || item.name, channel: trailerInfo.name || T("Trailer"),
+                 hint: T("OK pause · ◀ ▶ 10 s · Back to the title") };
+    }
+    function playTrailer() {
+        if (!trailerInfo || !trailerInfo.key || !TV.video) return;
+        TV.log("trailer: " + trailerInfo.key);
+        TV.video.open(trailerVideo());
+    }
+    function onTrailerBtn() { var b = btnNav && btnNav.current(); return !!(isOpen && zone === "btns" && b && b._trailer && TV.topNav() === screen); }
+    function trailerSoon() {
+        if (!TV.video) return;
+        if (trailerInfo && trailerInfo.key && onTrailerBtn()) TV.video.prepare(trailerVideo(), onTrailerBtn); else TV.video.drop();
     }
 
     /* ---------- the saga and "More Like This", found in your catalog ---------- */
@@ -173,6 +208,8 @@
     function draw() {
         var it = item, m = meta || {};
         var keepZone = zone, keepBtn = btnNav ? btnNav.index : 0, keep = {};
+        // the button you are on, by what it says: one that comes in before it later (Trailer) does not take its focus
+        var keepKey = btnNav && btnNav.current() ? btnNav.current()._key : null;
         if (epStrip) keep.eps = epStrip.index;
         if (castStrip) keep.cast = castStrip.index;
         extras.forEach(function (x) { keep[x.id] = x.strip.index; });
@@ -210,7 +247,7 @@
                 esc(T("S{s} E{e}", { s: start.ep.season, e: start.ep.episode }) + " · " + T("{n} min left", { n: Math.max(1, Math.round((er.dur - er.pos) / 60)) })) + "</span>"));
         }
         var btnsEl = el("div", "detail__btns"), btns = [], acts = [];
-        function add(cls, html, act) { var b = el("div", "btn" + (cls ? " " + cls : ""), html); btnsEl.appendChild(b); btns.push(b); acts.push(act); }
+        function add(cls, html, act) { var b = el("div", "btn" + (cls ? " " + cls : ""), html); b._key = b.textContent; btnsEl.appendChild(b); btns.push(b); acts.push(act); return b; }
         if (it.kind === "movie") {
             if (r && r.pos > 60 && !r.done) {
                 add("btn--primary", TV.icon("play", 28) + esc(T("Resume")), function () { play(it, r.pos); });
@@ -224,6 +261,7 @@
                 add("btn--primary", TV.icon("play", 28) + esc(label), function () { playEp(first, resuming ? start.pos : 0); });
             }
         }
+        if (trailerInfo && trailerInfo.key && TV.video) add("", TV.icon("film", 28) + esc(T("Trailer")), playTrailer)._trailer = true;
         if (it.versions && it.versions.length > 1) {
             add("", TV.icon("quality", 28) + esc(T("Versions ({n})", { n: it.versions.length })), function () {
                 TV.menu(T("Versions"), it.versions.map(function (v) {
@@ -253,8 +291,10 @@
         if (m.cast && m.cast.length) people.push("<b>" + esc(T("Cast")) + "</b>  " + esc(m.cast.slice(0, 6).map(function (c) { return typeof c === "string" ? c : c.name; }).join(", ")));
         if (people.length) mainEl.appendChild(el("div", "detail__people", people.join("<br>")));
         inner.appendChild(mainEl);
-        btnNav = new TV.Nav({ onSelect: function (i) { acts[i](); } });
-        btnNav.setTiles(btns, Math.min(keepBtn, btns.length - 1));
+        var keepAt = -1;
+        btns.forEach(function (b, i) { if (keepAt < 0 && keepKey && b._key === keepKey) keepAt = i; });
+        btnNav = new TV.Nav({ onSelect: function (i) { acts[i](); }, onFocus: function () { setTimeout(trailerSoon, 0); } });
+        btnNav.setTiles(btns, keepAt >= 0 ? keepAt : Math.min(keepBtn, btns.length - 1));
 
         // ---- below: seasons and episodes, the saga, More Like This, the cast ----
         sectionEl = el("div", "detail__section");
@@ -358,7 +398,7 @@
     function stripOf(z) { if (z === "eps") return epStrip; if (z === "cast") return castStrip; var x = extraOf(z); return x ? x.strip : null; }
     function topIn(e) { var y = 0; while (e && e !== inner) { y += e.offsetTop; e = e.offsetParent; } return y; }
     function paint() {
-        if (zone === "btns") btnNav.refocus(); else btnNav.blur();
+        if (zone === "btns") btnNav.refocus(); else { btnNav.blur(); if (TV.video) TV.video.drop(); }
         seasonEls.forEach(function (c, i) { c.classList.toggle("is-current", i === seasonIndex); c.classList.toggle("is-focused", zone === "seasons" && i === seasonIndex); });
         if (epStrip) epStrip.setActive(zone === "eps");
         extras.forEach(function (x) { x.strip.setActive(zone === x.id); });

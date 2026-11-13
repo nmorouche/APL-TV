@@ -19,6 +19,8 @@
     /* The channel list's programmes (the past ones, replay at once), their details, its two views (List or Grid),
        and going back in a live channel */
     add(global.TV_LANG_FR, {
+        "Trailer": "Bande-annonce",
+        "OK pause · ◀ ▶ 10 s · Back to the title": "OK pause · ◀ ▶ 10 s · Retour à la fiche",
         "Replay: 1 day": "Replay : 1 jour",
         "Replay: {n} days": "Replay : {n} jours",
         "{n} min": "{n} min",
@@ -43,6 +45,8 @@
     });
 
     add(global.TV_LANG_PL, {
+        "Trailer": "Zwiastun",
+        "OK pause · ◀ ▶ 10 s · Back to the title": "OK pauza · ◀ ▶ 10 s · Wstecz do tytułu",
         "Replay: 1 day": "Powtórki: 1 dzień",
         "Replay: {n} days": "Powtórki: {n} dni",
         "{n} min": "{n} min",
