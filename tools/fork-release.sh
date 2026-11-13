@@ -114,4 +114,4 @@ else
 fi
 git push -q origin "HEAD:$RELEASE_BRANCH"
 say "### Published $new_base.$new_rev"
-say "The screens installed from this fork take it within 6 hours (or at once: Settings, Updates, Check Now)."
+say "The screens installed from this fork take it within 6 hours (or at once: Settings, Updates, Check for Updates)."
