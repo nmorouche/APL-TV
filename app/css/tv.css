@@ -443,7 +443,7 @@ body.is-preview { cursor: default; }
 .pinfo__art { position: absolute; left: 0; right: 0; top: 0; height: 330px; z-index: 0; opacity: 0.42; background: center 22% / cover no-repeat;
     -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent); mask-image: linear-gradient(180deg, #000 30%, transparent); }
 .pinfo__main, .pinfo__side { position: relative; z-index: 1; }
-.pinfo__rate { flex: none; margin-left: auto; display: flex; }
+.pinfo__rate { flex: none; display: flex; }
 .pinfo__when .pinfo__rate { margin-left: auto; padding-left: 14px; }
 .pinfo__rate .imdb { padding: 0; height: 28px; }
 .pinfo__title { font-size: 38px; font-weight: 700; line-height: 1.15; letter-spacing: -0.3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
