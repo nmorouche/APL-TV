@@ -36,10 +36,15 @@ While a channel plays full screen, **OK or ◀** opens the channel list. In this
   of the title on YouTube: the one in your language, else the English one. OK plays it inside
   APL TV with the remote (OK pauses, ◀ ▶ 10 s, Back comes back to the page). A trailer YouTube
   keeps for itself opens in the screen's YouTube app instead. Needs a TMDB key.
+- **Your provider's categories one press away, in Movies and in Series.** A chip right after
+  Sort holds the provider's own categories in your language only ("FR · Nouveautes",
+  "FR · Comedie"…; every one when the provider names no language). It shows the one you are on,
+  or the last one you chose, or by default the provider's new titles: ▼ goes to it, OK opens the
+  list. The other countries stay in the last chip, as before.
 
 The code is in `app/js/osd.js` (the player), `app/js/epg.js` (a channel's past programmes),
 `app/js/meta.js` (a programme's details, a title's trailer), `app/js/detail.js` (the Trailer
-button), `app/js/live.js` and `app/css/tv.css`. Its texts, in
+button), `app/js/vod.js` (the provider's chip), `app/js/live.js` and `app/css/tv.css`. Its texts, in
 French and in Polish, are in a file of their own, `app/js/lang-fork.js`: the project's language
 files are left as they are, so that its new translations never conflict with these.
 

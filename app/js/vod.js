@@ -1,7 +1,8 @@
 /* ============================================================
    vod.js: Movies and Series.
-   A row at the top (Sort, New, Top Rated, My List, then the genres and the
-   provider's categories in one list), the covers below in 7 columns, with
+   A row at the top (Sort, your provider's categories in your language, New,
+   Top Rated, My List, then the genres and every provider's category in one
+   list), the covers below in 7 columns, with
    the IMDb rating on each cover as soon as it is known. OK opens the
    title's page, OK held adds it to My List.
    ============================================================ */
@@ -13,6 +14,7 @@
     function make(kind, viewId) {
         var root, chipsEl, chipStrip, gridClip, countEl, grid, chips = [], chipEls = [], chipIndex = 0, chipScroll = 0, zone = "grid", visible = false, catId = null, loadTimer = null, dirty = true;
         var genreList = null, coverStale = false;
+        var provCats = [], provIds = {};          // the provider's categories in your language (the second chip)
         var SORTS = [["default", T("Default Order")], ["added", T("Recently Added")], ["az", T("A to Z")], ["year", T("Year, Newest First")], ["rating", T("Rating, Best First")]];
         var key = kind === "movies" ? "movies" : "series";
 
@@ -37,7 +39,7 @@
         /* Sort, New, Top Rated, My List, then ONE chip for the rest: the genres (TMDB) and the provider's categories in a
            vertical list, like Live TV's Categories (a row of 30 chips to scroll through was too long). The chip shows
            the genre or category you are on. */
-        function inList(id) { return !!id && ["sort", "recent", "top", "mylist", "watched", "genres"].indexOf(String(id)) < 0; }
+        function inList(id) { return !!id && ["sort", "prov", "recent", "top", "mylist", "watched", "genres"].indexOf(String(id)) < 0; }
         // one of the provider's categories of THIS kind (a movie category and a series one can share their number)
         function catIn(id) {
             var cat = D.catalog(), l = cat ? cat[key].cats : [];
@@ -50,27 +52,66 @@
             var c = catIn(id);
             return c && c.name ? c.name : "";
         }
+        /* ---------- your provider's own categories, one press away ----------
+           The second chip, right after Sort: the provider's categories in your language only ("FR · Nouveautes",
+           "FR · Comedie"…; every one when the provider names no language), without going through Genres, Provider's
+           Categories, then the country. The chip shows the one you are on, or the last one you chose, or by default
+           the provider's own new titles; ▼ goes to it, OK opens the list. The other countries stay in the last chip. */
+        function provRead() {
+            var cat = D.catalog(), adult = TV.pref("showAdult");
+            var all = (cat ? cat[key].cats : []).filter(function (c) { return c.name && (adult || !c.adult) && !c.off && c.count !== 0 && !D.catNameHidden(c.name); });
+            var mine = all.filter(function (c) { return c.lang === TV.lang; });
+            provCats = mine.length ? mine : all;
+            provIds = {};
+            provCats.forEach(function (c) { provIds[c.id] = c; });
+        }
+        function isProv(id) { return !!id && Object.prototype.hasOwnProperty.call(provIds, id); }
+        function provLabel(c) { return (c.tag ? c.tag + " · " : "") + c.name; }
+        // the provider's own "new titles" category (it is usually its first one too)
+        function provDefault() {
+            for (var i = 0; i < provCats.length; i++) if (/nouveaut|\bnew\b|r[ée]cent|latest|derniers? ajouts?|neuheit|novit|estreno|nowo[sś]ci/i.test(provCats[i].name)) return provCats[i];
+            return provCats[0] || null;
+        }
+        // the one the chip stands for: where you are, else the last one you chose, else the provider's new titles
+        function provNow() {
+            if (isProv(catId)) return provIds[catId];
+            var last = TV.pref(key + "Prov");
+            return isProv(last) ? provIds[last] : provDefault();
+        }
+        function openProv() {
+            var cur = provNow();
+            TV.menu(T("Provider's Categories"), provCats.map(function (c) {
+                return { label: provLabel(c) + (c.count ? "  ·  " + c.count : ""), check: !!cur && c.id === cur.id, focus: !!cur && c.id === cur.id, run: function () {
+                    load(c.id); buildChips(); paintChips();
+                    if (grid.items.length) { zone = "grid"; grid.setActive(true); paintChips(); }
+                } };
+            }));
+        }
         // a category that is still there and shown (a genre always is; one of the provider's may have gone or been hidden)
         function exists(id) { var c; return !inList(id) || String(id).indexOf("g:") === 0 || id === "all" || !!((c = catIn(id)) && c.name && !c.off); }
         function buildChips() {
             var sort = sortNow(), sortName = sort === "default" ? T("Sort") : SORTS.filter(function (s) { return s[0] === sort; })[0][1];
-            chips = [{ id: "sort", name: sortName }, { id: "recent", name: T("New") }, { id: "top", name: T("Top Rated") }, { id: "mylist", name: T("My List") }];
+            provRead();
+            var prov = provNow();
+            chips = [{ id: "sort", name: sortName }].concat(prov ? [{ id: "prov", name: provLabel(prov) }] : [],
+                [{ id: "recent", name: T("New") }, { id: "top", name: T("Top Rated") }, { id: "mylist", name: T("My List") }]);
             if (D.recentlyWatched(key).length) chips.push({ id: "watched", name: T("Recently Watched") });
-            var cur = TV.pref(key + "Cat"), here = inList(cur) ? nameOf(cur) : "";
+            var cur = TV.pref(key + "Cat"), here = inList(cur) && !isProv(cur) ? nameOf(cur) : "";
             chips.push({ id: "genres", name: here || (genreList && genreList.length ? T("Genres") : T("Categories")) });
             if (!genreList) TV.meta.genres(kind === "movies" ? "movie" : "tv").then(function (l) { genreList = l; if (visible) { var keep = chips[chipIndex] && chips[chipIndex].id; buildChips(); selectChip(keep); paintChips(); } });
             chipStrip.innerHTML = "";
             chipEls = chips.map(function (c) {
                 var e = el("div", "chip" + (c.id === "sort" && sort !== "default" ? " is-on" : ""),
-                    (c.id === "sort" ? TV.icon("sort", 24) + "&nbsp;&nbsp;" : c.id === "genres" ? TV.icon("list", 24) + "&nbsp;&nbsp;" : "") + esc(c.name));
+                    (c.id === "sort" ? TV.icon("sort", 24) + "&nbsp;&nbsp;" : c.id === "genres" ? TV.icon("list", 24) + "&nbsp;&nbsp;" : c.id === "prov" ? TV.icon("film", 24) + "&nbsp;&nbsp;" : "") + esc(c.name));
                 chipStrip.appendChild(e);
                 return e;
             });
-            selectChip(TV.pref(key + "Cat") || "recent");
+            selectChip(TV.pref(key + "Cat") || "prov");
         }
         function selectChip(want) {
-            if (inList(want)) want = "genres";                 // a genre or a category: its chip is the list's
-            chipIndex = 1;                                     // by default New, never Sort
+            if (isProv(want)) want = "prov";                   // one of the provider's in your language: its own chip
+            else if (inList(want)) want = "genres";            // a genre or another category: its chip is the list's
+            chipIndex = 1;                                     // by default the chip after Sort (the provider's, else New), never Sort
             for (var i = 0; i < chips.length; i++) if (chips[i].id === want && want !== "sort") { chipIndex = i; break; }
         }
         /* The list: the genres, then the provider's categories (by country when there are many, as in Live TV) */
@@ -121,7 +162,7 @@
         function paintChips() {
             chipEls.forEach(function (e, i) {
                 e.classList.toggle("is-focused", i === chipIndex && zone === "chips" && TV.shell.focusOn() === "view");
-                e.classList.toggle("is-current", chips[i].id === catId || (chips[i].id === "genres" && inList(catId)));
+                e.classList.toggle("is-current", chips[i].id === catId || (chips[i].id === "prov" && isProv(catId)) || (chips[i].id === "genres" && inList(catId) && !isProv(catId)));
             });
             var c = chipEls[chipIndex];
             if (c) TV.lift(c);
@@ -135,7 +176,7 @@
         // the provider's category you are on, when the list's chip is the one focused (OK held: hide it)
         function provCat() {
             var c = chips[chipIndex];
-            if (!c || c.id !== "genres" || !inList(catId) || String(catId).indexOf("g:") === 0 || catId === "all") return null;
+            if (!c || (c.id !== "genres" && c.id !== "prov") || (c.id === "prov") !== isProv(catId) || !inList(catId) || String(catId).indexOf("g:") === 0 || catId === "all") return null;
             var o = catIn(catId);
             return o && o.kind ? o : null;
         }
@@ -146,8 +187,10 @@
         function load(id, keep) {
             keep = keep && id === catId && grid.items.length;
             if (id === "sort" || id === "genres") return;
+            if (id === "prov") { var pn = provNow(); if (!pn) return; id = pn.id; }     // the provider's chip: the category it shows
             catId = id;
             TV.setPref(key + "Cat", id);
+            if (isProv(id) && TV.pref(key + "Prov") !== id) TV.setPref(key + "Prov", id);
             var items = sorted(D.itemsIn(key, id));
             if (keep) grid.update(items); else grid.set(items, 0);
             grid.setActive(zone === "grid" && TV.shell.focusOn() === "view");
@@ -191,8 +234,12 @@
                 return;
             }
             buildChips();
-            var want = TV.pref(key + "Cat") || "recent";
-            load(want !== "sort" && want !== "genres" && exists(want) ? want : "recent", keep);
+            var first = provDefault(), want = TV.pref(key + "Cat") || (first ? first.id : "recent");
+            /* The first time with the provider's chip: Movies and Series open on the provider's new titles, once;
+               after that, on the category you were last on, as before */
+            if (first && !TV.pref(key + "ProvSeen")) { TV.setPref(key + "ProvSeen", 1); want = first.id; keep = false; }
+            load(want !== "sort" && want !== "genres" && want !== "prov" && exists(want) ? want : (first ? first.id : "recent"), keep);
+            buildChips(); paintChips();                                  // the chips again: they name the category now loaded
         }
 
         var view = {
@@ -219,7 +266,9 @@
                     }
                     if (code === K.DOWN) {
                         var c = chips[chipIndex];
-                        if (c && c.id !== "sort" && c.id !== "genres" && c.id !== catId) load(c.id);     // Genres: down to the one you are on
+                        var pv = c && c.id === "prov" ? provNow() : null;
+                        if (pv) { if (pv.id !== catId) { load(pv.id); buildChips(); paintChips(); } }                 // the provider's chip: down to the category it shows
+                        else if (c && c.id !== "sort" && c.id !== "genres" && c.id !== catId) load(c.id);     // Genres: down to the one you are on
                         if (grid.items.length) { zone = "grid"; TV.sound.tick(); paintChips(); grid.setActive(true); } else TV.sound.edge();
                         return true;
                     }
@@ -237,6 +286,7 @@
             ok: function () {
                 if (zone === "chips" && chips[chipIndex] && chips[chipIndex].id === "sort") { clearTimeout(loadTimer); chooseSort(); return; }
                 if (zone === "chips" && chips[chipIndex] && chips[chipIndex].id === "genres") { clearTimeout(loadTimer); openGenres(); return; }
+                if (zone === "chips" && chips[chipIndex] && chips[chipIndex].id === "prov") { clearTimeout(loadTimer); openProv(); return; }
                 if (zone === "chips") { clearTimeout(loadTimer); load(chips[chipIndex].id); if (grid.items.length) { zone = "grid"; grid.setActive(true); paintChips(); } return; }
                 var it = grid.current();
                 if (it) TV.detail.open(it);
