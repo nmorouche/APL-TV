@@ -19,6 +19,20 @@ Créé par **Knikt** (Gero Corp.), l'auteur d'[APL Launcher](https://github.com/
 
 > **APL TV est seulement un lecteur.** Il ne contient aucune chaîne, aucune playlist et aucun fournisseur : tu ajoutes les tiens. Utilise-le uniquement avec des contenus que tu as le droit de regarder.
 
+## Nouveau dans la 1.3
+
+- **Les portails Stalker prêts en quelques secondes.** Les chaînes et les titres les plus récents de chaque catégorie arrivent d'abord, et le reste des films et séries continue d'arriver en arrière-plan pendant que tu utilises l'app. Un gros portail prenait plusieurs minutes.
+- **Tes propres guides TV.** Réglages › Guide TV › Tes guides : ajoute l'adresse d'un guide XMLTV (.xml ou .xml.gz). Ses programmes complètent les chaînes qui manquent au guide de ton fournisseur, ou le remplacent pour celles qu'il connaît.
+- **Cacher Sports.** Réglages › Affichage › Onglet Sports : désactivé, l'onglet quitte la barre du haut et Sports ne charge plus rien.
+- **Android : le format du flux reste le tien.** Après une mise en veille, la TV en direct ne passe plus toute seule en HLS.
+
+## Nouveau dans la 1.2
+
+- **Des sous-titres qui se calent tout seuls.** Les sous-titres OpenSubtitles faits à partir de ton fichier arrivent en tête, marqués « Fait pour ce fichier », synchronisés de la première à la dernière réplique. Ceux faits pour une copie à une autre vitesse (une copie européenne à 25 images par seconde) sont recalés sur ta vidéo. Et Caler sur une réplique : OK au moment où tu entends la réplique affichée, et le décalage est réglé.
+- **Fluide sur LG.** Sports et l'accueil se redessinent beaucoup moins sur webOS : sur une LG OLED G5, 91 à 99 % des images à l'heure dans Sports au lieu de 59 à 71 %.
+- **Films classiques et plateformes.** Films classiques (tous les films de ta playlist jusqu'à 1975), les années 70, 80 et 90, Séries cultes, et Netflix, Apple TV, Prime Video, Disney+, HBO Max, Paramount+ et Canal+ aussi pour les films, comme chaque service les propose dans ton pays.
+- **Masquer une chaîne**, les **chaînes de A à Z**, le **football universitaire** et les **diffuseurs canadiens de la NHL** dans Sports.
+
 ## Nouveau dans la 1.1 : Sports
 
 ![Sports : le prochain match de ton équipe, avec une photo de son stade](docs/images/sports.jpg)
