@@ -26,12 +26,12 @@ jobs:
     env:
       TIZEN_SDK: /home/runner/tizen-sdk
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # tools/check.py runs node --check on the scripts.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Tag matches app/config.xml
         if: startsWith(github.ref, 'refs/tags/v')
@@ -64,7 +64,7 @@ jobs:
       - name: Build the package
         run: bash tools/make-package.sh dist
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: APL-TV-wgt
           path: dist/
@@ -74,11 +74,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
-      - uses: actions/setup-python@v5
+          node-version: 24
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: LG's webOS CLI and Pillow
@@ -87,7 +87,7 @@ jobs:
           python3 -m pip install --quiet pillow
       - name: Build the package
         run: python3 tools/make-webos.py --release
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: APL-TV-ipk
           path: |
@@ -100,18 +100,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
-      - uses: actions/setup-python@v5
+          node-version: 24
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: "8.10.2"
       - name: Android SDK 35 and Pillow
@@ -133,7 +133,7 @@ jobs:
           GRADLE: gradle
         run: |
           if [ -n "$APL_KEYSTORE_FILE" ]; then python3 tools/make-android.py --release; else python3 tools/make-android.py --release --unsigned; fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: APL-TV-apk
           path: |
@@ -147,7 +147,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           path: dist
           merge-multiple: true
@@ -161,7 +161,7 @@ jobs:
       # always gives the newest one (the Downloader code 9141513 points there)
       - name: The Android package under its fixed name
         run: cp dist/apl-tv-v*-android.apk dist/apl-tv-android.apk
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/apl-tv-v*.wgt
