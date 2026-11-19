@@ -1,8 +1,8 @@
 {
- "version": "1.4.3.1",
+ "version": "1.4.5.1",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "On Samsung, subtitle names from the .mkv file also for Stremio streams, media servers and public domain movies",
+ "notes": "Stalker: series episodes season by season, full series categories, no reload loop",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

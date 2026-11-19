@@ -104,9 +104,11 @@
     /* ---------- the session ---------- */
     // Of the addresses tried, the error that tells the most: a MAC refused, then a portal that answered, then a 404
     function worth(e) { return !e ? 0 : /refused this MAC/.test(e.message || "") ? 3 : e.status === 404 || /\b404\b/.test(e.message || "") ? 1 : 2; }
+    /* The session of this portal and MAC address: one changed in Settings needs a new handshake */
+    function sameKey(s, src) { return !!s && s.key === normPortal(src.portal) + "|" + normMac(src.mac); }
     function login(src, fresh) {
         var s = sessions[src.id];
-        if (s && !fresh && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
+        if (s && !fresh && sameKey(s, src) && Date.now() - s.at < 20 * 60000) return Promise.resolve(s);
         /* Eight requests at a time: when the token runs out they all ask again. One handshake for all of them,
            or each new token could end the one just given to the others. */
         if (logins[src.id]) return logins[src.id];
@@ -128,7 +130,7 @@
                                "&device_id2=" + encodeURIComponent(src.id2 || "") + "&signature=&auth_second_step=1&hw_version=1.7-BD-00&not_valid_token=0&timestamp=" + Math.floor(Date.now() / 1000) + "&api_signature=262&prehash=0";
                     return req(src, api, prof, token, 20000).then(function (p) {
                         if (p && (p.status === 1 || p.blocked === "1") && !p.id) throw new Error(T("The portal refused this MAC address."));
-                        var ses = { api: api, token: token, at: Date.now(), profile: p || {} };
+                        var ses = { api: api, token: token, at: Date.now(), profile: p || {}, key: normPortal(src.portal) + "|" + normMac(src.mac) };
                         sessions[src.id] = ses;
                         TV.log("stalker: connected (" + api.replace(/^https?:\/\/[^\/]+/, "") + ")");
                         return ses;
@@ -204,7 +206,7 @@
     }
     function restPages(src, rest, add, full) {
         return eachLimit(rest, JOBS, function (r) {
-            if (full()) return;
+            if (full(r)) return;
             return page(src, r.params, r.p).then(function (j) { add((j && j.data) || [], r.ct); }, function (e) { TV.log("stalker: " + r.ct.name + " page " + r.p + ": " + e.message); });
         });
     }
@@ -219,6 +221,7 @@
         function addVodSeries(s, ct) {
             if (out.series.items.length >= MAX_ITEMS) return;
             var cid = src.id + ":v" + ct.id.split(":").pop();
+            ct.hasSeries = true;                                                 // its pages are still wanted when the movies are full
             if (!vodCats[cid]) { vodCats[cid] = 1; out.series.cats.push({ id: cid, name: ct.name, raw: ct.raw, tag: ct.tag, lang: ct.lang, adult: ct.adult, kind: "series", count: 0 }); }
             var name = s.name || s.o_name || "", t = S.title(name), list = Array.isArray(s.series) ? s.series : [], sn = seasonOf(name);
             out.series.items.push({
@@ -235,7 +238,7 @@
                 if (out.movies.items.length >= MAX_ITEMS) return;
                 var name = m.name || m.o_name || "", t = S.title(name);
                 out.movies.items.push({
-                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
+                    id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd) + "::m" + encodeURIComponent(m.id), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
                     year: t.year || parseInt(m.year, 10) || 0, poster: img(src, m.screenshot_uri || m.cover_big), cat: ct.id, rating: parseFloat(m.rating_imdb || m.rating_kinopoisk) || 0,
                     added: Date.parse(String(m.added || "").replace(" ", "T")) / 1000 || 0, ext: "mp4"
                 });
@@ -258,7 +261,10 @@
         function seriesParams(ct) { return "type=series&action=get_ordered_list&category=" + encodeURIComponent(ct.id.split(":").pop().replace(/^s/, "")) + "&genre=*&sortby=added&fav=0"; }
         var restM = [], restS = [];
         progress(T("Connecting to {name}…", { name: src.name }));
-        return login(src, true).then(function (ses) {
+        /* The session of a few minutes ago when there is one (same portal, same MAC): a new handshake at each refresh
+           ended the token a channel or a movie was using, whose requests then made one more, ending this one's (#30:
+           three handshakes in 12 s, then "refused this MAC" on 48 pages and 0 movies) */
+        return login(src).then(function (ses) {
             return call(src, "type=account_info&action=get_main_info").then(function (a) {
                 var exp = a && (a.end_date || a.phone || "");
                 var t = Date.parse(String(exp).replace(" ", "T"));
@@ -293,11 +299,18 @@
                 var own = cats(sc, src.id, "series", "s");
                 out.series.cats = own.concat(out.series.cats);                       // before the ones found among the movies
                 return firstPages(src, own, seriesParams, addSeries).then(function (r) { restS = r; });
-            }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
+            }).catch(function (e) {
+                /* Nothing at all for the series section, even with a new token: a portal without one (its shows are among
+                   its movies). Not a failure: as one, it was asked again with the whole portal every 10 minutes (#30) */
+                if (e && e.message === "token") { TV.log("stalker: no series section on this portal (its series come from its movies)"); return; }
+                TV.log("stalker series: " + e.message); out.failed.series = e.message;
+            });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, first pages: " + out.movies.items.length + " movies, " + out.series.items.length + " series; " + (restM.length + restS.length) + " pages left");
             if (onFirst && restM.length + restS.length) onFirst(out);
-            return restPages(src, restM, addMovies, function () { return out.movies.items.length >= MAX_ITEMS; });
+            /* A movie category stops once the movies are full; one that holds series goes on while the series aren't (#30:
+               40,000 movies reached early, and every series category, filed among the movies, kept its first 14 shows) */
+            return restPages(src, restM, addMovies, function (r) { return r.ct.hasSeries ? out.series.items.length >= MAX_ITEMS : out.movies.items.length >= MAX_ITEMS; });
         }).then(function () {
             return restPages(src, restS, addSeries, function () { return out.series.items.length >= MAX_ITEMS; });
         }).then(function () {
@@ -315,45 +328,121 @@
        series filed among the movies (its id has "|v") */
     function seriesInfo(src, item) {
         var type = /\|v[^|]*$/.test(item.id) ? "vod" : "series";
-        return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(item.seriesId) + "&season_id=0&episode_id=0&p=1", 60000).then(function (j) {
-            var seasons = {};
+        var mid = item.seriesId;
+        function listOf(params) { return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(mid) + params, 60000); }
+        function num(x, keys, i) {
+            for (var k = 0; k < keys.length; k++) { var v = parseInt(x[keys[k]], 10); if (v > 0) return v; }
+            return parseInt(String(x.name || "").replace(/\D+/g, " ").trim().split(" ")[0], 10) || (i + 1);
+        }
+        /* The episodes of a season given without them (is_season, a newer portal: #30, "no episodes" on every series):
+           asked one season at a time, every page; each plays through its own file (resolve, "vodep") */
+        function episodesOf(se, sn) {
+            var sid = se.id, out = [];
+            function pageOf(p) {
+                return listOf("&season_id=" + encodeURIComponent(sid) + "&episode_id=0&p=" + p).then(function (j) {
+                    var d = (j && j.data) || [];
+                    d.forEach(function (ep, i) {
+                        if (!ep || ep.is_season) return;
+                        var e = num(ep, ["series_number", "episode_number", "number"], out.length + i);
+                        out.push({ id: mid + "_" + sn + "_" + e, season: sn, episode: e, title: String(ep.name && !/^\s*(episode|épisode|серия)?\s*\d+\s*$/i.test(ep.name) ? ep.name : ""),
+                                   url: "stalker:" + src.id + ":vodep:" + [mid, sid, ep.id, ep.cmd || "", type].map(encodeURIComponent).join(":"), image: img(src, ep.screenshot_uri || ""), plot: "" });
+                    });
+                    var total = parseInt(j && j.total_items, 10) || 0, per = parseInt(j && j.max_page_items, 10) || d.length || 14;
+                    if (d.length && p < 10 && p * per < total) return pageOf(p + 1);
+                });
+            }
+            return pageOf(1).then(function () { return out; }, function (e) { TV.log("stalker: episodes of season " + sn + " of " + mid + ": " + e.message); return out; });
+        }
+        return listOf("&season_id=0&episode_id=0&p=1").then(function (j) {
+            var seasons = {}, bare = [];
             ((j && j.data) || []).forEach(function (se, si) {
-                var sn = parseInt(String(se.name || "").replace(/\D+/g, " ").trim().split(" ")[0], 10) || (si + 1);
+                var sn = num(se, ["season_number"], si);
                 var eps = Array.isArray(se.series) ? se.series : [];
-                if (!eps.length) return;
+                if (!eps.length) { if (se.is_season || se.season_number !== undefined) bare.push({ se: se, sn: sn }); return; }
                 seasons[sn] = eps.map(function (n) {
                     var e = parseInt(n, 10) || 0;
-                    return { id: item.seriesId + "_" + sn + "_" + e, season: sn, episode: e, title: "", url: addr(src, "vod", se.cmd, e), image: "", plot: "" };
+                    return { id: mid + "_" + sn + "_" + e, season: sn, episode: e, title: "", url: addr(src, "vod", se.cmd, e), image: "", plot: "" };
                 });
             });
-            if (!Object.keys(seasons).length) {
-                var first = ((j && j.data) || [])[0];
-                TV.log("stalker: no episodes in the " + type + " answer for " + item.seriesId + " (" + ((j && j.data) || []).length + " items" + (first ? ", fields " + Object.keys(first).slice(0, 20).join(",") : "") + ")");
-            }
-            return { seasons: seasons, info: {} };
+            return Promise.all(bare.map(function (b) { return episodesOf(b.se, b.sn).then(function (eps) { if (eps.length) seasons[b.sn] = eps; }); })).then(function () {
+                if (!Object.keys(seasons).length) {
+                    var first = ((j && j.data) || [])[0];
+                    TV.log("stalker: no episodes in the " + type + " answer for " + mid + " (" + ((j && j.data) || []).length + " items" + (first ? ", fields " + Object.keys(first).slice(0, 20).join(",") : "") + ")");
+                } else if (bare.length) TV.log("stalker: " + mid + ": episodes asked season by season (" + Object.keys(seasons).length + " seasons)");
+                return { seasons: seasons, info: {} };
+            });
         });
     }
 
     /* The real link of a "stalker:" address, asked just before playing (a portal's links expire quickly) */
+    /* An episode asked season by season (seriesInfo): its own list of files first, the first file's link; else its own cmd */
+    function linkFrom(j, c) {
+        var link = String((j && j.cmd) || "").replace(/^(ffmpeg|ffrt\d*|auto|rtsp)\s+/i, "").trim();
+        if (/^(https?|rtsp|rtmp):\/\//i.test(link)) return link;
+        link = String(c || "").replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
+        return /^https?:\/\//i.test(link) && !/localhost/i.test(link) ? link : "";
+    }
+    function episodeLink(v) {
+        var src = TV.data.sources().filter(function (s) { return s.id === v[1]; })[0];
+        if (!src) return Promise.reject(new Error(T("This playlist is no longer there.")));
+        var mid = decodeURIComponent(v[2]), sid = decodeURIComponent(v[3]), eid = decodeURIComponent(v[4]), own = decodeURIComponent(v[5]), type = decodeURIComponent(v[6]) || "vod";
+        function ask(c) { return call(src, "type=vod&action=create_link&cmd=" + encodeURIComponent(c) + "&series=&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0", 30000); }
+        function noLink(j) { var s = j && (j.error || j.msg) ? " (" + String(j.error || j.msg).slice(0, 80) + ")" : ""; return new Error(T("The portal gave no link for this video.") + s); }
+        return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(mid) + "&season_id=" + encodeURIComponent(sid) + "&episode_id=" + encodeURIComponent(eid) + "&p=1", 30000)
+            .then(function (j) { return (j && j.data) || []; }, function () { return []; }).then(function (files) {
+                var file = files.filter(function (x) { return x && x.cmd; })[0], c = file ? file.cmd : own;
+                TV.log("stalker: episode " + eid + ": " + files.length + " files" + (c ? ", cmd " + TV.redact(c).slice(0, 120) : ", no cmd"));
+                if (!c) throw noLink(null);
+                return ask(c).then(function (j) {
+                    var link = linkFrom(j, c);
+                    if (!link) { try { TV.log("stalker: no link for the episode: " + JSON.stringify(j).slice(0, 300)); } catch (e) {} throw noLink(j); }
+                    return link;
+                });
+            });
+    }
     function resolve(url) {
-        var m = String(url).match(/^stalker:([^:]+):(itv|vod):([^:]*)(?::(\d+))?$/);
+        var ve = String(url).match(/^stalker:([^:]+):vodep:([^:]*):([^:]*):([^:]*):([^:]*):([^:]*)$/);
+        if (ve) return episodeLink(ve);
+        var m = String(url).match(/^stalker:([^:]+):(itv|vod):([^:]*)(?::(\d*))?(?::m([^:]+))?$/);     // a movie: its id after "::m"
         if (!m) return Promise.reject(new Error("bad stalker address"));
         var src = TV.data.sources().filter(function (s) { return s.id === m[1]; })[0];
         if (!src) return Promise.reject(new Error(T("This playlist is no longer there.")));
-        var cmd = decodeURIComponent(m[3]);
-        return call(src, "type=" + m[2] + "&action=create_link&cmd=" + encodeURIComponent(cmd) + "&series=" + (m[4] || "") + "&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0", 30000).then(function (j) {
+        var cmd = decodeURIComponent(m[3]), movieId = m[5] ? decodeURIComponent(m[5]) : "";
+        function ask(c, series) {
+            return call(src, "type=" + m[2] + "&action=create_link&cmd=" + encodeURIComponent(c) + "&series=" + (series || "") + "&forced_storage=0&disable_ad=0&download=0&force_ch_link_check=0", 30000);
+        }
+        function linkOf(j, c) {
             var link = String((j && j.cmd) || "").replace(/^(ffmpeg|ffrt\d*|auto|rtsp)\s+/i, "").trim();
-            if (!/^(https?|rtsp|rtmp):\/\//i.test(link)) {
-                // some portals give the link directly in the channel's own cmd
-                link = cmd.replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
-                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) {
-                    // what the portal said, for the log and the report (#30: movies a portal gave no link for)
-                    var said = "";
-                    try { TV.log("stalker: no link in the portal's answer: " + JSON.stringify(j).slice(0, 400)); said = j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) {}
-                    throw new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (said ? " (" + said + ")" : ""));
-                }
-            }
-            return link;
+            if (/^(https?|rtsp|rtmp):\/\//i.test(link)) return link;
+            // some portals give the link directly in the channel's own cmd
+            link = String(c || "").replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
+            return /^https?:\/\//i.test(link) && !/localhost/i.test(link) ? link : "";
+        }
+        function said(j) { try { return j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) { return ""; } }
+        function fail(j) {
+            var s = said(j);
+            return new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (s ? " (" + s + ")" : ""));
+        }
+        function shown(x) { try { return JSON.stringify(x).slice(0, 400); } catch (e) { return String(x); } }
+        return ask(cmd, m[4]).then(function (j) {
+            var link = linkOf(j, cmd);
+            if (link) return link;
+            // what the portal said and what was asked, for the log and the report (#30: movies a portal gave no link for)
+            TV.log("stalker: no link in the portal's answer: " + shown(j) + " (cmd " + TV.redact(cmd).slice(0, 120) + ")");
+            /* A movie the portal keeps as files (#30: "nothing_to_play", id 0, for every movie it listed): its own list
+               is asked, and the link of its first file */
+            if (m[2] !== "vod" || !movieId || m[4]) throw fail(j);
+            return call(src, "type=vod&action=get_ordered_list&movie_id=" + encodeURIComponent(movieId) + "&season_id=0&episode_id=0&p=1", 30000).then(function (f) {
+                var list = (f && f.data) || [], file = list.filter(function (x) { return x && x.cmd && x.cmd !== cmd; })[0];
+                TV.log("stalker: the movie's own list: " + list.length + " items" + (file ? ", cmd " + TV.redact(file.cmd).slice(0, 120) : ""));
+                if (!file) throw fail(j);
+                return ask(file.cmd, "").then(function (j2) {
+                    var l2 = linkOf(j2, file.cmd);
+                    if (l2) { TV.log("stalker: link found through the movie's file"); return l2; }
+                    TV.log("stalker: no link for the movie's file either: " + shown(j2));
+                    throw fail(j2);
+                });
+            }, function () { throw fail(j); });
         });
     }
 
