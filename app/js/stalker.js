@@ -57,14 +57,46 @@
         if (token) h.Authorization = "Bearer " + token;
         return h;
     }
-    function req(src, api, params, token, timeout) {
+    /* A portal that says it gets too many requests (HTTP 429, or 503): its requests wait and go again (3, 6, then
+       12 s later), two at a time from then on, the handshake included (#30: a portal answered 429 even to it). Every
+       request to a portal goes through its gate: JOBS at a time, fewer once it said so. */
+    var gates = {}, BUSY_WAIT = [3000, 6000, 12000];
+    function gateOf(src) { return gates[src.id] || (gates[src.id] = { max: JOBS, on: 0, q: [], until: 0 }); }
+    function pump(g) { while (g.on < g.max && g.q.length) g.q.shift()(); }
+    function gate(src, fn) {
+        var g = gateOf(src);
+        return new Promise(function (resolve, reject) {
+            g.q.push(function () {
+                g.on++;
+                var wait = g.until - Date.now();
+                (wait > 0 ? new Promise(function (r) { setTimeout(r, wait); }) : Promise.resolve()).then(fn).then(
+                    function (v) { g.on--; pump(g); resolve(v); }, function (e) { g.on--; pump(g); reject(e); });
+            });
+            pump(g);
+        });
+    }
+    function busy(e) { return !!e && (e.status === 429 || e.status === 503); }
+    function req(src, api, params, token, timeout, tries) {
+        tries = tries || 0;
         var url = api + "?" + params + (params.indexOf("JsHttpRequest") < 0 ? "&JsHttpRequest=1-xml" : "");
-        return TV.helper.sget(url, headers(src, token), timeout).then(function (text) {
+        return gate(src, function () { return TV.helper.sget(url, headers(src, token), timeout); }).then(function (text) {
             var j = null;
             try { j = JSON.parse(text); } catch (e) { throw new Error(/authoriz|forbidden|access denied/i.test(text) ? T("The portal refused this MAC address.") : T("The portal did not answer as a Stalker portal.")); }
             return j && j.js !== undefined ? j.js : j;
         }, function (e) {
             if (e && e.old) throw new Error(T("Stalker portals need the new install of APL TV: run APL Launcher Setup again (Samsung) or install the latest .ipk (LG) or .apk (Android) once."));
+            if (busy(e)) {
+                var g = gateOf(src);
+                if (tries < BUSY_WAIT.length) {
+                    if (g.max > 2) TV.log("stalker: the portal says too many requests (HTTP " + e.status + "): two at a time, and asked again in a few seconds");
+                    g.max = Math.min(g.max, 2);
+                    g.until = Math.max(g.until, Date.now() + BUSY_WAIT[tries]);
+                    return req(src, api, params, token, timeout, tries + 1);
+                }
+                var b = new Error(T("The portal says it is getting too many requests. Wait a few minutes, then try again.") + " (HTTP " + e.status + ")");
+                b.status = e.status; b.busy = true;
+                throw b;
+            }
             throw e;
         });
     }
@@ -101,7 +133,7 @@
                         TV.log("stalker: connected (" + api.replace(/^https?:\/\/[^\/]+/, "") + ")");
                         return ses;
                     });
-                }).catch(function (e) { if (worth(e) > worth(lastErr)) lastErr = e; if (e && /new install/.test(e.message)) throw e; return null; });
+                }).catch(function (e) { if (worth(e) > worth(lastErr)) lastErr = e; if (e && (e.busy || /new install/.test(e.message))) throw e; return null; });
             });
         }, Promise.resolve(null)).then(function (ses) {
             if (!ses) throw lastErr || new Error(T("The portal did not answer as a Stalker portal."));
@@ -121,7 +153,7 @@
                 if (!tokenOk(j)) throw new Error("token");
                 return j;
             }).catch(function (e) {
-                if (e && /new install/.test(e.message)) throw e;
+                if (e && (e.busy || /new install/.test(e.message))) throw e;       // a busy portal was already asked again (req)
                 var cur = sessions[src.id];
                 var next = !tokenTrouble(e) ? s : cur && cur.token !== s.token ? cur : null;
                 return (next ? Promise.resolve(next) : login(src, true)).then(function (s2) {
@@ -179,11 +211,28 @@
     /* The catalog. onFirst(out), when given, is called once the channels and the first page of every category
        are in: the screen can be used while the other pages come (#19: a big portal took minutes). */
     function load(src, progress, base, onFirst) {
-        var out = base;
+        var out = base, vodCats = {};
         out.type = "stalker";
+        /* A series filed among the movies (is_series): many portals keep their shows in the video club (#30). It goes to
+           Series, in a category of the same name. Its episodes come with it when the portal lists them there, or are
+           asked when its page opens (seriesInfo). */
+        function addVodSeries(s, ct) {
+            if (out.series.items.length >= MAX_ITEMS) return;
+            var cid = src.id + ":v" + ct.id.split(":").pop();
+            if (!vodCats[cid]) { vodCats[cid] = 1; out.series.cats.push({ id: cid, name: ct.name, raw: ct.raw, tag: ct.tag, lang: ct.lang, adult: ct.adult, kind: "series", count: 0 }); }
+            var name = s.name || s.o_name || "", t = S.title(name), list = Array.isArray(s.series) ? s.series : [], sn = seasonOf(name);
+            out.series.items.push({
+                id: src.id + "|v" + s.id, src: src.id, seriesId: s.id, kind: "series", name: name, title: t.title !== name ? t.title : undefined,
+                year: t.year || parseInt(s.year, 10) || 0, poster: img(src, s.screenshot_uri || s.cover_big), cat: cid, rating: parseFloat(s.rating_imdb || s.rating_kinopoisk) || 0,
+                added: Date.parse(String(s.added || "").replace(" ", "T")) / 1000 || 0,
+                eps: list.length ? list.map(function (n) { var e = parseInt(n, 10) || 0; return { id: s.id + "_" + sn + "_" + e, season: sn, episode: e, url: addr(src, "vod", s.cmd, e) }; }) : undefined
+            });
+        }
         function addMovies(d, ct) {
             d.forEach(function (m) {
-                if (!m || !m.cmd || m.is_series == 1 || out.movies.items.length >= MAX_ITEMS) return;
+                if (!m || !m.cmd) return;
+                if (m.is_series == 1) { addVodSeries(m, ct); return; }
+                if (out.movies.items.length >= MAX_ITEMS) return;
                 var name = m.name || m.o_name || "", t = S.title(name);
                 out.movies.items.push({
                     id: src.id + "|m" + m.id, src: src.id, sid: m.id, url: addr(src, "vod", m.cmd), kind: "movie", name: name, title: t.title !== name ? t.title : undefined,
@@ -238,8 +287,12 @@
         }).then(function () {
             progress(T("Loading series…"));
             return call(src, "type=series&action=get_categories").then(function (sc) {
-                out.series.cats = cats(sc, src.id, "series", "s");
-                return firstPages(src, out.series.cats, seriesParams, addSeries).then(function (r) { restS = r; });
+                /* Only the series module's own categories are asked to it. The ones found among the movies were asked
+                   too, under an id it doesn't know: a portal that answers that with all its series made hundreds of
+                   pages more, and then said 429 to everything (1.4.1, #30). */
+                var own = cats(sc, src.id, "series", "s");
+                out.series.cats = own.concat(out.series.cats);                       // before the ones found among the movies
+                return firstPages(src, own, seriesParams, addSeries).then(function (r) { restS = r; });
             }).catch(function (e) { TV.log("stalker series: " + e.message); out.failed.series = e.message; });
         }).then(function () {
             TV.log("stalker: " + out.live.chans.length + " channels, first pages: " + out.movies.items.length + " movies, " + out.series.items.length + " series; " + (restM.length + restS.length) + " pages left");
@@ -253,18 +306,30 @@
         });
     }
 
-    /* A series' seasons and episodes (asked when its page opens) */
+    /* "Show S02", "Season 2": its season; 1 otherwise */
+    function seasonOf(name) {
+        var m = /\bS(\d{1,2})(?:\b|E\d)|\b(?:season|saison|temporada|staffel|stagione|sezon)\s*(\d{1,2})\b/i.exec(String(name || ""));
+        return m ? parseInt(m[1] || m[2], 10) || 1 : 1;
+    }
+    /* A series' seasons and episodes (asked when its page opens): from the series module, or from the video club for a
+       series filed among the movies (its id has "|v") */
     function seriesInfo(src, item) {
-        return call(src, "type=series&action=get_ordered_list&movie_id=" + encodeURIComponent(item.seriesId) + "&season_id=0&episode_id=0&p=1", 60000).then(function (j) {
+        var type = /\|v[^|]*$/.test(item.id) ? "vod" : "series";
+        return call(src, "type=" + type + "&action=get_ordered_list&movie_id=" + encodeURIComponent(item.seriesId) + "&season_id=0&episode_id=0&p=1", 60000).then(function (j) {
             var seasons = {};
             ((j && j.data) || []).forEach(function (se, si) {
                 var sn = parseInt(String(se.name || "").replace(/\D+/g, " ").trim().split(" ")[0], 10) || (si + 1);
                 var eps = Array.isArray(se.series) ? se.series : [];
+                if (!eps.length) return;
                 seasons[sn] = eps.map(function (n) {
                     var e = parseInt(n, 10) || 0;
                     return { id: item.seriesId + "_" + sn + "_" + e, season: sn, episode: e, title: "", url: addr(src, "vod", se.cmd, e), image: "", plot: "" };
                 });
             });
+            if (!Object.keys(seasons).length) {
+                var first = ((j && j.data) || [])[0];
+                TV.log("stalker: no episodes in the " + type + " answer for " + item.seriesId + " (" + ((j && j.data) || []).length + " items" + (first ? ", fields " + Object.keys(first).slice(0, 20).join(",") : "") + ")");
+            }
             return { seasons: seasons, info: {} };
         });
     }
@@ -281,7 +346,12 @@
             if (!/^(https?|rtsp|rtmp):\/\//i.test(link)) {
                 // some portals give the link directly in the channel's own cmd
                 link = cmd.replace(/^(ffmpeg|ffrt\d*|auto)\s+/i, "").trim();
-                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) throw new Error(T("The portal gave no link for this channel."));
+                if (!/^https?:\/\//i.test(link) || /localhost/i.test(link)) {
+                    // what the portal said, for the log and the report (#30: movies a portal gave no link for)
+                    var said = "";
+                    try { TV.log("stalker: no link in the portal's answer: " + JSON.stringify(j).slice(0, 400)); said = j && (j.error || j.msg) ? String(j.error || j.msg).slice(0, 80) : ""; } catch (e) {}
+                    throw new Error((m[2] === "itv" ? T("The portal gave no link for this channel.") : T("The portal gave no link for this video.")) + (said ? " (" + said + ")" : ""));
+                }
             }
             return link;
         });

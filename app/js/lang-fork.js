@@ -1,12 +1,12 @@
 /* ============================================================
-   lang-fork.js: the texts of this fork's additions (FORK.md), in French
-   and in Polish, added to the project's tables (js/lang-fr.js,
-   js/lang-pl.js) once they are loaded. In a file of their own: the
+   lang-fork.js: the texts of this fork's additions (FORK.md), in French,
+   Polish, Spanish and Italian, added to the project's tables
+   (js/lang-fr.js, lang-pl.js, lang-es.js, lang-it.js) once they are loaded. In a file of their own: the
    project adds its translations at the top and at the end of its tables,
    where lines of this fork would conflict at every other version.
    Each key is the English text exactly as written in the code. A text
    the project translates itself one day keeps the project's translation.
-   tools/check.py reads the French ones here too.
+   tools/check.py reads the ones here too.
    ============================================================ */
 (function (global) {
     "use strict";
@@ -68,5 +68,57 @@
         "◀ List or Grid": "◀ Lista lub siatka",
         "Back: List or Grid": "Wstecz: lista lub siatka",
         "Channels and Programmes": "Kanały i programy"
+    });
+
+    add(global.TV_LANG_ES, {
+        "Trailer": "Tráiler",
+        "OK pause · ◀ ▶ 10 s · Back to the title": "OK pausa · ◀ ▶ 10 s · Volver a la ficha",
+        "Replay: 1 day": "Repetición: 1 día",
+        "Replay: {n} days": "Repetición: {n} días",
+        "{n} min": "{n} min",
+        "▶ Programmes and replay": "▶ Programas y repeticiones",
+        "▶ Programmes": "▶ Programas",
+        "OK: watch the replay": "OK: ver la repetición",
+        "OK: watch live  ·  Hold OK: start over": "OK: ver en directo  ·  Mantén OK: desde el principio",
+        "OK: watch live": "OK: ver en directo",
+        "Rating and cast: add your TMDB key in Settings.": "Nota y reparto: añade tu clave TMDB en Ajustes.",
+        "Watch Live": "Ver en directo",
+        "Rewind": "Retroceder",
+        "This replay is not available right now.": "Esta repetición no está disponible ahora mismo.",
+        "Your provider may not keep this moment. Try another programme, or try again later.": "Puede que tu proveedor no guarde este momento. Prueba otro programa o vuelve a intentarlo más tarde.",
+        "List": "Lista",
+        "Grid": "Cuadrícula",
+        "List View": "Vista de lista",
+        "Grid View": "Vista de cuadrícula",
+        "▲▼ List or Grid  ·  OK: open  ·  Back: close": "▲▼ Lista o cuadrícula  ·  OK: abrir  ·  Atrás: cerrar",
+        "◀ List or Grid": "◀ Lista o cuadrícula",
+        "Back: List or Grid": "Atrás: lista o cuadrícula",
+        "Channels and Programmes": "Canales y programas"
+    });
+
+    add(global.TV_LANG_IT, {
+        "Trailer": "Trailer",
+        "OK pause · ◀ ▶ 10 s · Back to the title": "OK pausa · ◀ ▶ 10 s · Torna alla scheda",
+        "Replay: 1 day": "Replay: 1 giorno",
+        "Replay: {n} days": "Replay: {n} giorni",
+        "{n} min": "{n} min",
+        "▶ Programmes and replay": "▶ Programmi e replay",
+        "▶ Programmes": "▶ Programmi",
+        "OK: watch the replay": "OK: guarda il replay",
+        "OK: watch live  ·  Hold OK: start over": "OK: guarda in diretta  ·  Tieni premuto OK: ricomincia",
+        "OK: watch live": "OK: guarda in diretta",
+        "Rating and cast: add your TMDB key in Settings.": "Voto e cast: aggiungi la tua chiave TMDB in Impostazioni.",
+        "Watch Live": "Guarda in diretta",
+        "Rewind": "Torna indietro",
+        "This replay is not available right now.": "Questo replay non è disponibile al momento.",
+        "Your provider may not keep this moment. Try another programme, or try again later.": "Il tuo provider potrebbe non conservare questo momento. Prova un altro programma o riprova più tardi.",
+        "List": "Elenco",
+        "Grid": "Griglia",
+        "List View": "Vista elenco",
+        "Grid View": "Vista griglia",
+        "▲▼ List or Grid  ·  OK: open  ·  Back: close": "▲▼ Elenco o griglia  ·  OK: apri  ·  Indietro: chiudi",
+        "◀ List or Grid": "◀ Elenco o griglia",
+        "Back: List or Grid": "Indietro: elenco o griglia",
+        "Channels and Programmes": "Canali e programmi"
     });
 })(window);

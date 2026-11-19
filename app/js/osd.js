@@ -433,7 +433,7 @@
         TV.player.subtitleDelay(delayMs);                  // the video's own subtitles move too
         refreshPop();
     }
-    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" || TV.lang === "pl" ? "," : ".") + " s"; }
+    function fmtDelay() { var s = delayMs / 1000; return (s > 0 ? "+" : s < 0 ? "−" : "") + Math.abs(s).toFixed(2).replace(".", TV.lang === "fr" || TV.lang === "es" || TV.lang === "pl" || TV.lang === "it" ? "," : ".") + " s"; }
 
     /* ---------- the menus above the buttons (Apple TV style) ---------- */
     function subsItems() {
@@ -1601,6 +1601,8 @@
             },
             onError: function (e) {
                 stateBox.classList.remove("is-on");
+                // Back in the list of a Stremio title's streams: nothing plays, the player closes
+                if (e === "cancelled") { finish(); return; }
                 // a format the screen cannot decode (HEVC 10-bit on a small Android box, an old Samsung…)
                 var dec = /DECOD|FORMAT_UNSUPPORTED|NOT_SUPPORTED/i.test(String(e));
                 if (o.replay && !dec) { error(T("This replay is not available right now."), String(e), T("Your provider may not keep this moment. Try another programme, or try again later.")); return; }

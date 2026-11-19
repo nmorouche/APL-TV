@@ -2,7 +2,7 @@
 """Checks run before every package and on every push (GitHub Actions).
 
 - every script parses (node --check), the app's and the helper service's;
-- every text shown in the interface (TV.t("...")) has its French translation in app/js/lang-fr.js;
+- every text shown in the interface (TV.t("...")) has its French, Spanish and Polish translations (app/js/lang-fr.js, lang-es.js, lang-pl.js);
 - the version is the same in app/config.xml, app/js/app.js and app/service/service.js;
 - no personal file is tracked by git (keys, development log, fonts, sounds, certificates).
 """
@@ -33,19 +33,23 @@ for s in scripts:
 # ---- translations ----
 keys = []
 for s in scripts:
-    if s.endswith(("lang-fr.js", "qr.js")) or "service" in s or "alexa-skill" in s:
+    if s.endswith(("lang-fr.js", "lang-es.js", "lang-pl.js", "qr.js")) or "service" in s or "alexa-skill" in s:
         continue
     for m in re.finditer(r'\bT\(\s*"((?:[^"\\]|\\.)*)"', read(s)):
         if m.group(1) not in keys:
             keys.append(m.group(1))
-fr = set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(os.path.join(APP, "js", "lang-fr.js")), re.M))
-# this fork's own texts are in a file of their own (app/js/lang-fork.js, FORK.md)
+# every text in French, Spanish and Polish (the interface's languages besides English)
+# this fork's own texts are in a file of their own (app/js/lang-fork.js, FORK.md), one table per language
 _fork_texts = os.path.join(APP, "js", "lang-fork.js")
-if os.path.exists(_fork_texts):
-    fr |= set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(_fork_texts), re.M))
-missing = [k for k in keys if k not in fr]
-if missing:
-    errors.append("French translation missing for %d texts:\n  %s" % (len(missing), "\n  ".join(missing)))
+_fork_src = read(_fork_texts) if os.path.exists(_fork_texts) else ""
+def _fork_keys(var):
+    m = re.search(r'add\(global\.' + var + r',\s*\{(.*?)\n\s*\}\);', _fork_src, re.S)
+    return set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', m.group(1), re.M)) if m else set()
+for _lang, _file, _var in (("French", "lang-fr.js", "TV_LANG_FR"), ("Spanish", "lang-es.js", "TV_LANG_ES"), ("Polish", "lang-pl.js", "TV_LANG_PL")):
+    _have = set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*:', read(os.path.join(APP, "js", _file)), re.M)) | _fork_keys(_var)
+    missing = [k for k in keys if k not in _have]
+    if missing:
+        errors.append("%s translation missing for %d texts:\n  %s" % (_lang, len(missing), "\n  ".join(missing)))
 
 # ---- version ----
 v_config = re.search(r'<widget[^>]*\sversion="([^"]+)"', read(os.path.join(APP, "config.xml"))).group(1)

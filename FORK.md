@@ -45,7 +45,7 @@ While a channel plays full screen, **OK or ◀** opens the channel list. In this
 The code is in `app/js/osd.js` (the player), `app/js/epg.js` (a channel's past programmes),
 `app/js/meta.js` (a programme's details, a title's trailer), `app/js/detail.js` (the Trailer
 button), `app/js/vod.js` (the provider's chip), `app/js/live.js` and `app/css/tv.css`. Its texts, in
-French and in Polish, are in a file of their own, `app/js/lang-fork.js`: the project's language
+French, Polish, Spanish and Italian, are in a file of their own, `app/js/lang-fork.js`: the project's language
 files are left as they are, so that its new translations never conflict with these.
 
 ## How this fork updates itself

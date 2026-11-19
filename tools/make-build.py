@@ -15,10 +15,10 @@ A = os.path.join(ROOT, "app")
 
 # Load order (boot.js loads them one by one, in this order). *.local.js are never downloaded.
 SCRIPTS = [
-    "js/lang-fr.js", "js/lang-pl.js", "js/i18n.js", "js/keys.local.js", "js/dev.local.js", "js/core.js", "js/android.js", "js/nav.js", "js/qr.js", "js/helper.js",
-    "js/smart.js", "js/stalker.js", "js/media.js", "js/data.js", "js/epg.js", "js/meta.js", "js/player.js", "js/ui.js", "js/home.js", "js/live.js", "js/guide.js",
+    "js/lang-fr.js", "js/lang-es.js", "js/lang-pl.js", "js/lang-it.js", "js/i18n.js", "js/keys.local.js", "js/dev.local.js", "js/core.js", "js/android.js", "js/nav.js", "js/qr.js", "js/helper.js",
+    "js/smart.js", "js/stalker.js", "js/media.js", "js/stremio.js", "js/freefilms.js", "js/data.js", "js/epg.js", "js/meta.js", "js/mkv.js", "js/player.js", "js/ui.js", "js/home.js", "js/live.js", "js/guide.js",
     "js/sports.js", "js/vod.js", "js/library.js", "js/detail.js", "js/person.js", "js/search.js", "js/settings.js", "js/multiview.js", "js/osd.js", "js/voice.js",
-    "js/saver.js", "js/updater.js", "js/app.js",
+    "js/saver.js", "js/updater.js", "js/crash.js", "js/app.js",
 ]
 STYLES = ["css/tv.css", "css/tv2.css"]
 LOADER = 1           # raise it when boot.js changes: the screens then ask for APL Launcher Setup, once
@@ -96,10 +96,10 @@ def write_compat():
     with open(path, "w", encoding="utf-8", newline="\n") as f:
         f.write(css)
 
-# This fork's own texts (FORK.md), right after the project's tables. Added here rather than in the list above:
-# the project edits that list at each new file.
+# This fork's own texts (FORK.md), right after the project's tables (all of them: before i18n.js, which reads
+# them). Added here rather than in the list above: the project edits that list at each new file.
 if "js/lang-fork.js" not in SCRIPTS:
-    SCRIPTS.insert(SCRIPTS.index("js/lang-pl.js") + 1, "js/lang-fork.js")
+    SCRIPTS.insert(SCRIPTS.index("js/i18n.js"), "js/lang-fork.js")
 
 def fork_rev():
     """A fork that publishes its own updates (FORK.md) numbers them after the project's version: fork/rev.json
