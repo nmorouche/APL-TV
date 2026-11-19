@@ -1,8 +1,8 @@
 {
- "version": "1.4.5.1",
+ "version": "1.4.7.1",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker: series episodes season by season, full series categories, no reload loop",
+ "notes": "Stalker: a refused movie is asked the ways a MAG box asks for it, every season page, 80,000 titles",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"
