@@ -927,6 +927,7 @@ window.TV_LANG_PL = {
     "International": "Międzynarodowe",
     /* Sort, Picture Size, versions, missing movies */
     "no list": "brak listy",
+    "Android closed APL TV to free memory. Light Mode (Settings > Display) keeps it open on this TV.": "Android zamknął APL TV, aby zwolnić pamięć. Tryb lekki (Ustawienia > Wyświetlanie) utrzyma go otwartym na tym telewizorze.",
     "{name}: the movies did not arrive ({error}). APL TV tries again in 10 minutes.": "{name}: filmy nie dotarły ({error}). APL TV spróbuje ponownie za 10 minut.",
     "{name}: the series did not arrive ({error}). APL TV tries again in 10 minutes.": "{name}: seriale nie dotarły ({error}). APL TV spróbuje ponownie za 10 minut.",
     "Version changed: {name}": "Zmieniono wersję: {name}",
@@ -1106,5 +1107,22 @@ window.TV_LANG_PL = {
     /* A Stalker portal that says too many requests (#30) */
     "The portal says it is getting too many requests. Wait a few minutes, then try again.": "Portal informuje, że otrzymuje zbyt wiele żądań. Odczekaj kilka minut i spróbuj ponownie.",
     /* A portal's movies that need the helper's relay (#30) */
-    "This portal's movies only open for a MAG box. Install the latest APL TV once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup), then they play.": "Filmy z tego portalu otwierają się tylko na dekoderze MAG. Zainstaluj raz najnowsze APL TV (LG: plik .ipk lub Homebrew Channel; Samsung: APL Launcher Setup), a potem będą się odtwarzać."
+    "This portal's movies only open for a MAG box. Install the latest APL TV once (LG: the .ipk or the Homebrew Channel; Samsung: APL Launcher Setup), then they play.": "Filmy z tego portalu otwierają się tylko na dekoderze MAG. Zainstaluj raz najnowsze APL TV (LG: plik .ipk lub Homebrew Channel; Samsung: APL Launcher Setup), a potem będą się odtwarzać.",
+    /* Keep the Channel in the Guide (#35) */
+    "Keep the Channel in the Guide": "Zachowaj kanał w przewodniku",
+    "In the TV Guide, the channel you were watching keeps playing behind it while you look at the others. OK changes the channel.": "W przewodniku TV oglądany kanał gra dalej w tle, gdy przeglądasz inne. OK zmienia kanał.",
+    /* Playlists turned off and on, their subscription's end, the background loading (#36) */
+    "Use This Playlist": "Używaj tej listy",
+    "Off: its channels, movies and series leave APL TV until you turn it on again. Nothing is deleted.": "Wyłączona: jej kanały, filmy i seriale znikają z APL TV, dopóki jej nie włączysz. Nic nie jest usuwane.",
+    "Loading in the Background": "Ładowanie w tle",
+    "Loading {p} %": "Ładowanie {p} %",
+    "Subscription ends {d}": "Subskrypcja kończy się {d}",
+    /* A title's trailer (#39) */
+    "Trailer": "Zwiastun",
+    "OK pause · ◀ ▶ 10 s · Back to the title": "OK pauza · ◀ ▶ 10 s · Powrót do tytułu",
+    /* A provider still counting the video just left (#27) */
+    "Your provider still counts the video you just left. APL TV keeps trying for a few minutes.": "Twój dostawca wciąż liczy wideo, które właśnie opuściłeś. APL TV próbuje ponownie przez kilka minut.",
+    "Your provider still counts the video you just left. With an account for one screen, wait a few minutes, then try again.": "Twój dostawca wciąż liczy wideo, które właśnie opuściłeś. Przy koncie na jeden ekran odczekaj kilka minut i spróbuj ponownie.",
+    "Your provider still counts the video you just left.": "Twój dostawca wciąż liczy wideo, które właśnie opuściłeś.",
+    "With an account for one screen, wait a few minutes, then try again.": "Przy koncie na jeden ekran odczekaj kilka minut i spróbuj ponownie."
 };

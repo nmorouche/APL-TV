@@ -1,8 +1,8 @@
 {
- "version": "1.4.7.1",
+ "version": "1.4.16.1",
  "loader": 1,
  "reinstall": "1.0.1",
- "notes": "Stalker: a refused movie is asked the ways a MAG box asks for it, every season page, 80,000 titles",
+ "notes": "Sports: the Others button and 4K channels in the right language; seasons that follow your choice and a poster behind series without a background.",
  "platforms": {
   "tizen": {
    "reinstall": "1.0.1"

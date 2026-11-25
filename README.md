@@ -26,6 +26,9 @@ Created by **Knikt** (Gero Corp.), the maker of [APL Launcher](https://github.co
 - **Public domain movies.** 2,700 movies, shorts and cartoons free of rights, from the Internet Archive and Wikimedia Commons, in Movies.
 - **Send a Report.** When something doesn't work, Settings › About › Send a Report sends the developer what APL TV just did and shows a code to give on GitHub. After an unexpected stop, the next start offers to send a crash report. Never without your OK.
 - **Subtitles with their names.** On Samsung, when the TV gives no language for an .mkv file's subtitles, APL TV reads their language and name from the file itself ("English SDH", "Forced"…).
+- **Trailers.** A Trailer button on each movie's and series' page, in your language first, played inside the app.
+- **Playlists on and off.** Turn a playlist off and its channels, movies and series leave APL TV; turn it on and they come back as they were. Its subscription's end date shows, and how far a big portal's loading has got.
+- **Keep the channel in the guide.** The channel you were watching plays on behind the TV guide while you look at the others.
 - **In Spanish and Italian**, Italian thanks to @beLikeJo.
 - **Light Mode on Android TV and Fire TV**, for devices with 1 GB of memory.
 
@@ -124,10 +127,10 @@ What people told us about their own TVs, in issues and on Reddit. Tell us about 
 |---|---|---|---|
 | Samsung Smart Monitor M8 | Tizen 9 | Everything (the developer's own screen) | |
 | Samsung QE65S90C | Tizen 7 | Playlists, movies and series; subtitle names from .mkv files | |
-| Samsung Q70C | Tizen 7 | | "helper unavailable" on some installs ([#22](../../issues/22)) |
+| Samsung Q70C | Tizen 7 | Playlists, live TV | Before the helper could take another port, "helper unavailable" ([#22](../../issues/22)) |
 | Samsung Freestyle+ (projector) | Tizen | Installed and running | |
 | LG OLED G5 | webOS 25 | Everything (the developer's own screen) | |
-| LG 43UR7500PSC | webOS 23 | Live TV from a big Stalker portal, its movies, series and episodes listed | Its movies' server only lets a MAG box in: being worked on ([#30](../../issues/30)) |
+| LG 43UR7500PSC | webOS 23 | A big Stalker portal: live TV, movies and series, through APL TV's helper for its MAG-only movies | |
 | Fire TV Stick (3rd gen), 1 GB | Fire OS 7 | Live TV and movies, with Light Mode | |
 | Fire TV Stick 4K Plus | Fire OS | Live TV and movies | MP2 sound has no decoder ([#33](../../issues/33)) |
 
@@ -263,7 +266,7 @@ APL TV is made by **Knikt** (Gero Corp.)
 - TV guides: your provider's XMLTV, [epg.pw](https://epg.pw) and [iptv-epg.org](https://iptv-epg.org).
 - Sports: scores, match photos and broadcasters by ESPN, other sports by 365Scores, Ligue 1 and Ligue 2 channels by the LFP, stadium photos from Wikipedia (Wikimedia Commons, free licences), video summaries on YouTube from the official channels.
 - On Android, video is played by [AndroidX Media3 / ExoPlayer](https://github.com/androidx/media) (Apache License 2.0).
-- The look, the sounds and the fonts come from APL Launcher.
+- The look, the sounds and the fonts come from APL Launcher. Without SF Pro, the [Inter](https://github.com/rsms/inter) Display font (SIL Open Font License 1.1).
 
 APL TV is not affiliated with Apple, Samsung, LG, Google, Amazon, TMDB, IMDb, OpenSubtitles, Stremio, ESPN, 365Scores, the LFP, YouTube, any league or club, or any IPTV provider. Names and logos belong to their owners.
 

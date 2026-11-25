@@ -589,12 +589,48 @@
         var ct = D.catOf(ch);
         return !!ct && !ct.off && (!ct.adult || TV.pref("showAdult"));
     }
-    function langOf(ch) {
+    function ownLang(ch) {
         var t = S.channel(ch.raw || ch.name);
         if (t.lang) return t.lang;
         var ct = D.catOf(ch);
         return (ct && ct.lang) || "";
     }
+    /* A channel with no language of its own (a "4K" category with no country, #38: Sky Sports Main Event 4K under
+       "Other") takes the language of the channels of the same name that have one */
+    var keyLangs = null, keyLangsOf = null;
+    function langOf(ch) {
+        var l = ownLang(ch);
+        if (l) return l;
+        var cat = D.catalog();
+        if (keyLangsOf !== cat) {
+            keyLangsOf = cat; keyLangs = {};
+            var votes = {};
+            ((cat && cat.live && cat.live.chans) || []).forEach(function (c) {
+                var k = nameKey(c), cl = k && ownLang(c);
+                if (!cl) return;
+                [k, "~" + family(c)].forEach(function (kk) {
+                    if (kk === "~") return;
+                    var v = votes[kk] = votes[kk] || {};
+                    v[cl] = (v[cl] || 0) + 1;
+                });
+            });
+            Object.keys(votes).forEach(function (k) {
+                var v = votes[k], best = "", n = 0;
+                Object.keys(v).forEach(function (x) { if (v[x] > n) { best = x; n = v[x]; } });
+                keyLangs[k] = best;
+            });
+        }
+        var nk = nameKey(ch), fk = family(ch);
+        return (nk && keyLangs[nk]) || (fk && keyLangs["~" + fk]) || "";
+    }
+    /* A channel's family: its first two words ("TNT SPORT ULTIMATE" in a 4K category with no country, #53: no channel of
+       that exact name has a language, but TNT SPORT 1 to 4 are English) */
+    function family(ch) {
+        var w = folded(S.channel(ch.raw || ch.name).name || ch.name || "").replace(/[^a-z0-9 ]+/g, " ").split(" ").filter(function (x) { return x && !/^\d+$/.test(x); });
+        return w.length >= 2 ? w[0] + " " + w[1] : "";
+    }
+    // the name part of a channel's key ("en:skysportsmainevent" and ":skysportsmainevent" are the same channel)
+    function nameKey(ch) { return String(ch.key || "").replace(/^[^:]*:/, ""); }
 
     /* ---------- who shows it, weeks ahead: the broadcaster ----------
        France, Ligue 1 and Ligue 2: the league's own site's API (ma-api.ligue1.fr, no key) gives each game week's
@@ -839,11 +875,12 @@
         }
         sliced(ms, index, function () { sliced(ms, broadcaster, byName); });
     }
-    /* One line per channel (its best quality), grouped by language, yours first */
+    /* One line per channel and quality, grouped by language, yours first */
     function arrange(list) {
         var byKey = {}, langs = {}, order = [], n = 0, now = Date.now();
         list.forEach(function (x) {
-            var k = x.ch.key || x.ch.id, o = byKey[k];
+            // one line per channel and quality: its 4K beside its HD (#38), each the best way it was found
+            var k = (x.ch.key || x.ch.id) + "|" + (x.ch.q || ""), o = byKey[k];
             if (!o || HOW[x.how] > HOW[o.how] || (HOW[x.how] === HOW[o.how] && S.qualityRank(x.ch.q) > S.qualityRank(o.ch.q))) byKey[k] = x;
         });
         Object.keys(byKey).forEach(function (k) {
@@ -2044,6 +2081,8 @@
         ok: function () { ytCmd("toggle"); ytBar(); },
         tiles: null
     };
+    /* The same player for the rest of the app: a title's trailer (js/detail.js, #39). v: { id, title, channel, hint } */
+    TV.video = { play: function (v) { openVideo(v); } };
     function openVideoApp(v) {
         var url = "https://www.youtube.com/watch?v=" + v.id, A = global.APLAndroid;
         if (TV.ANDROID) { if (!(A && A.openLink && A.openLink(url))) TV.toast(T("Install the new APL TV for Android to open videos.")); return; }
@@ -2081,7 +2120,7 @@
         var r = TV.$("match");
         if (!r) return;
         ytDrop();
-        sheet.m = m; sheet.lang = ""; sheet.zone = "btns"; sheet.open = true; sheet.el = r; sheet.tab = ""; sheet.tabIndex = 0; sheet.t0 = Date.now(); sheet.told = {};
+        sheet.m = m; sheet.lang = null; sheet.zone = "btns"; sheet.open = true; sheet.el = r; sheet.tab = ""; sheet.tabIndex = 0; sheet.t0 = Date.now(); sheet.told = {};
         r.innerHTML = "";
         r.classList.add("is-open");
         TV.pushNav(sheetScreen);
@@ -2109,7 +2148,8 @@
     sheet.drawOnce = function (first) {
         var m = sheet.m, r = sheet.el, st = statusOf(m), two = sides(m), w = where[m.id], dc = details[m.id], d = dc && dc.d;
         var keepZone = sheet.zone, keepBtn = sheet.nav ? sheet.nav.index : 0, keepCh = sheet.strip ? sheet.strip.index : 0, keepLang = sheet.lang;
-        if (w && (!sheet.lang || !w.langs[sheet.lang])) sheet.lang = w.order[0] || "";
+        // "" is a language too: Other, the channels with none (#53: Others chosen, English came back, as if nothing was)
+        if (w && (sheet.lang === null || !w.langs[sheet.lang])) sheet.lang = w.order.length ? w.order[0] : null;
         var list = w && w.langs[sheet.lang] ? w.langs[sheet.lang] : [];
         sheet.list = list;
         r.innerHTML = "";
@@ -3004,8 +3044,9 @@
     TV.views.sports = view;
     TV.sports = { open: openMatch, matches: function () { return matches; }, where: function (id) { return where[id]; } };
     /* The YouTube player above, for the other pages (a title's trailer): open({ id, title, channel, hint }),
-       prepare(v, still) makes it ready ahead while still() says the button is still under the focus, drop() lets go */
-    TV.video = { open: openVideo, prepare: ytPrepareSoon, drop: ytDrop };
+       prepare(v, still) makes it ready ahead while still() says the button is still under the focus, drop() lets go.
+       It replaces the project's TV.video above (#39), so it keeps its play() too */
+    TV.video = { open: openVideo, play: openVideo, prepare: ytPrepareSoon, drop: ytDrop };
     /* Development builds: the test bench (other favourites, another country, a tab by name), nothing saved */
     if (TV.DEV) {
         TV.sports.test = function (o) {

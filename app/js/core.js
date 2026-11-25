@@ -24,7 +24,9 @@
     TV.RAM_MB = 0;
     TV.LOW_RAM = (function () {
         try {
-            if (TV.ANDROID && global.APLAndroid.memory) { var m = JSON.parse(global.APLAndroid.memory() || "{}"); TV.RAM_MB = m.total || 0; return TV.RAM_MB > 0 && TV.RAM_MB < 1600; }
+            /* Android's own "low-RAM device" counts too (a crash report: a Hisense of 1.8 GB that Android calls low-RAM,
+               closed during a movie with Light Mode off) */
+            if (TV.ANDROID && global.APLAndroid.memory) { var m = JSON.parse(global.APLAndroid.memory() || "{}"); TV.RAM_MB = m.total || 0; return (TV.RAM_MB > 0 && TV.RAM_MB < 1600) || m.small === true; }
             // an older Android package: the browser's own figure, rounded down (1 = 1 to 2 GB)
             var dm = global.navigator.deviceMemory;
             if (TV.ANDROID && dm) { TV.RAM_MB = dm * 1024; return dm <= 1; }
@@ -120,7 +122,7 @@
     };
     TV.drop = function (key) { delete memo[key]; try { global.localStorage.removeItem(PFX + key); } catch (e) {} };
 
-    var DEFAULTS = { tvGuide: true, sportsTab: true, audioDelay: 0, pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, chanOrder: "list", autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
+    var DEFAULTS = { guideKeep: false, tvGuide: true, sportsTab: true, audioDelay: 0, pictureMode: "fit", language: "auto", sounds: true, showAdult: false, mergeQuality: true, chanOrder: "list", autoPreview: false, motion: true, startTab: "home", lastChannel: null, timeFormat: "24",
                      audioLang: "auto", audioLang2: "orig", subLang: "auto", subLang2: "off", subSize: "m", subColor: "white", subBg: "outline", subPos: "low", autoNext: false, resumePrompt: true, autoUpdate: true, screenSaver: "auto", tidyCats: true, tidyNames: true, kbLayout: "auto", timeshift: true, crashReports: "ask", lightMode: "auto" };
     var prefs = TV.load("prefs", {}) || {};
     var prefListeners = [];

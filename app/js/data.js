@@ -20,6 +20,9 @@
 
     /* ---------- sources ---------- */
     function sources() { return TV.load("sources", []) || []; }
+    /* Watched: 94 % of an episode; a movie in its last 10 minutes or past 90 % (#42: leaving a movie in its end credits,
+       9 minutes long, kept it in Continue Watching) */
+    function finished(pos, dur, movie) { return !!dur && (pos > dur * (movie ? 0.9 : 0.94) || (movie && dur > 40 * 60 && dur - pos <= 10 * 60)); }
     function saveSources(list) { TV.save("sources", list); }
 
     function normServer(s) {
@@ -134,7 +137,7 @@
                     logo: c.stream_icon || "", cat: src.id + ":" + c.category_id, epg: c.epg_channel_id || "", arch: parseInt(c.tv_archive, 10) ? (parseInt(c.tv_archive_duration, 10) || 1) : 0
                 });
             });
-            if (keepVod) { out.keptVod = true; TV.log("refresh of " + src.name + ": its channels only (little memory), its movies and series stay"); return null; }
+            if (keepVod) { out.keptVod = true; TV.log("refresh of " + src.name + ": its channels only (" + (TV.SMALL ? "little memory" : "a big playlist, its movies once a day") + "), its movies and series stay"); return null; }
             progress(T("Loading movies…"));
             return Promise.all([xApi(src, "get_vod_categories"), xApi(src, "get_vod_streams")]).then(lists("movies")).catch(lost("movies"));
         }).then(function (r) {
@@ -173,11 +176,17 @@
        pages are in, then every 3 minutes when it grew by a third), marked unfinished: the next start shows it at
        once and loads the portal again. Never over a fuller copy from before (a refresh keeps the old one until the
        end). */
+    var loading = {};            // source id -> { text, share } while a Stalker portal loads
     function count(c) { return c ? (c.movies && c.movies.items ? c.movies.items.length : 0) + (c.series && c.series.items ? c.series.items.length : 0) : 0; }
     function loadStalker(src, progress, onFirst) {
         if (!TV.stalker) return Promise.reject(new Error("no Stalker support"));
         var out = { id: src.id, v: CATALOG_V, at: Date.now(), type: "stalker", live: { cats: [], chans: [] }, movies: { cats: [], items: [] }, series: { cats: [], items: [] }, failed: {} };
         var before = count(cats[src.id]), savedN = 0, timer = null;
+        // how far the loading has got, for Settings (#36): the message, and the share of the background pages
+        var info = loading[src.id] = { text: "", share: 0, at: Date.now() };
+        var shown = progress;
+        progress = function (m) { info.text = m || info.text; shown(m); };
+        progress.share = function (r) { info.share = r; };
         function snap() {
             var n = count(out);
             if (!stillThere(src.id) || n <= before || n < savedN * 1.3) return;
@@ -191,7 +200,7 @@
             snap();
             timer = setInterval(snap, 3 * 60000);
         });
-        p.then(function () { clearInterval(timer); }, function () { clearInterval(timer); });
+        p.then(function () { clearInterval(timer); delete loading[src.id]; }, function () { clearInterval(timer); delete loading[src.id]; });
         return p;
     }
 
@@ -315,7 +324,7 @@
         var myNames = TV.pref("chanNames") || {};
         list.forEach(function (src) {
             var c = cats[src.id];
-            if (!c) return;
+            if (!c || src.off) return;                 // a playlist turned off: its catalog is kept, not shown (#36)
             // the Public Domain Movies are shown like a playlist's: in Movies, with the other categories
             var media = isMedia(src) && src.type !== "free";
             ["live", "movies", "series"].forEach(function (k) {
@@ -546,8 +555,9 @@
                 if (c) cats[s.id] = c;
             });
         })); }).then(function () {
-            var missing = list.filter(function (s) { return !cats[s.id]; });
-            var partial = list.filter(function (s) { return cats[s.id] && (!cats[s.id].movies || !cats[s.id].series); });
+            // a playlist turned off keeps its saved catalog, read here, but is never loaded nor refreshed (#36)
+            var missing = list.filter(function (s) { return !s.off && !cats[s.id]; });
+            var partial = list.filter(function (s) { return !s.off && cats[s.id] && (!cats[s.id].movies || !cats[s.id].series); });
             list.forEach(function (s) { var c = cats[s.id]; if (c) { c.movies = c.movies || { cats: [], items: [] }; c.series = c.series || { cats: [], items: [] }; } });
             if (partial.length) setTimeout(function () {
                 TV.log("movies and series: loading again in the background (" + partial.length + ")");
@@ -559,29 +569,53 @@
                 .then(rebuild);
         }).then(function () {
             // and the ones saved unfinished (closed while a big portal was loading, or its movies did not come)
-            var old = sources().filter(function (s) { return cats[s.id] && (cats[s.id].unfinished || Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
-            if (old.length) whenQuiet(function () { refresh(old, function () {}, TV.SMALL); });
+            var old = sources().filter(function (s) { return !s.off && cats[s.id] && (cats[s.id].unfinished || Date.now() - (cats[s.id].at || 0) > MAX_AGE || (cats[s.id].v || 1) < CATALOG_V); });
+            if (!old.length) return;
+            var heavy = old.some(function (s) { return big(cats[s.id]); }), mark = TV.load("bigRefresh", null);
+            if (mark && Date.now() - mark.at < DAY) TV.log("the last full refresh of a big playlist closed APL TV: its channels only today");
+            whenQuiet(function () { refresh(old, function () {}, function (s) { return TV.SMALL || (big(cats[s.id]) && !fullDue(s)); }); }, heavy);
         });
     }
     /* Refreshing a big account is seconds of heavy work for the TV (reading and saving 200,000 titles: up
        to 12 s on the LG G5, the first channel then took 12 s to show). It waits for a quiet moment: the
        remote unused for 45 s (counted from the start too) and no channel starting, so zapping and moving
        around stay quick. After 20 minutes it goes ahead anyway. */
-    var bootAt = Date.now();
-    function whenQuiet(fn) {
+    var bootAt = Date.now(), DAY = 24 * 3600 * 1000;
+    /* A big account (crash reports from Samsung TVs: 40,000 channels and 185,000 movies, or 10,000 and 66,000): its
+       automatic refresh read every movie and series again while the ones from before were still in memory, a minute
+       or two after the start, with a channel playing and the public guides loading, and the TV closed APL TV. Closed
+       before the save, the catalog stayed old and the next start did the same: 8 closings in an hour on one TV.
+       Now its refresh brings its channels, its movies and series once a day only, never while a video plays nor with
+       the public guides loading; and after a full refresh that closed APL TV, its channels only for a day. */
+    function big(c) { return !!c && ((c.live && c.live.chans.length || 0) > 20000 || ((c.movies && c.movies.items.length || 0) + (c.series && c.series.items.length || 0)) > 80000); }
+    function fullDue(s) {
+        var c = cats[s.id], mark = TV.load("bigRefresh", null);
+        if (mark && mark.id === s.id && Date.now() - mark.at < DAY) return false;
+        return !c || !!c.unfinished || Date.now() - (c.at || 0) > DAY || (c.v || 1) < CATALOG_V;
+    }
+    function whenQuiet(fn, heavy) {
         var since = Date.now();
         (function check() {
             var still = Date.now() - Math.max(TV.keyAt || 0, bootAt) > 45000 && !(TV.player && TV.player.isBuffering());
-            /* A device with little memory: never while a video plays, nor in the background (the refresh on top of a
-               channel was what Android stopped the page for, on a Fire TV Stick), and not after 20 minutes either */
-            if (TV.SMALL && (document.hidden || (TV.player && TV.player.current && TV.player.current()))) { setTimeout(check, 5000); return; }
+            /* A device with little memory, or a big account: never while a video plays, nor in the background (the
+               refresh on top of a channel was what Android stopped the page for, on a Fire TV Stick), nor while the
+               public guides load, and not after 20 minutes either */
+            if ((TV.SMALL || heavy) && (document.hidden || (heavy && TV.epg && TV.epg.busy && TV.epg.busy()))) { setTimeout(check, 5000); return; }
+            /* Any TV: never while a video plays, even after 20 minutes (the crash reports: Samsung TVs closed APL TV
+               with a refresh started on top of a movie or a channel, on accounts of every size) */
+            if (TV.player && TV.player.current && TV.player.current()) { setTimeout(check, 5000); return; }
             if (still || Date.now() - since > 20 * 60000) { TV.log("catalog refresh: starting (" + Math.round((Date.now() - bootAt) / 1000) + " s after start)"); fn(); }
             else setTimeout(check, 5000);
         })();
     }
     function refresh(list, progress, liveOnly) {
-        list = list || sources();
-        return sequence(list, function (s) { return loadSource(s, progress || function () {}, false, liveOnly).catch(function (e) { TV.log("refresh " + s.name + ": " + e.message); }); }).then(rebuild);
+        list = (list || sources()).filter(function (s) { return !s.off; });
+        return sequence(list, function (s) {
+            var only = typeof liveOnly === "function" ? liveOnly(s) : liveOnly, watch = !only && big(cats[s.id]);
+            if (watch) TV.save("bigRefresh", { id: s.id, at: Date.now() });       // still there at the next start: it closed APL TV
+            if (watch) unfold();                    // ~15 MB less at the refresh's peak; made again when Search opens
+            return loadSource(s, progress || function () {}, false, only).then(function () { if (watch) TV.drop("bigRefresh"); }, function (e) { if (watch) TV.drop("bigRefresh"); TV.log("refresh " + s.name + ": " + e.message); });
+        }).then(rebuild);
     }
     function sequence(items, fn) {
         return items.reduce(function (p, it) { return p.then(function () { return fn(it); }); }, Promise.resolve());
@@ -1087,7 +1121,7 @@
             var e = r[k];
             if (!e || !e.item || e.manual) return;
             // a series whose episode is over: its next episode waits here ("up next")
-            if (!e.upNext && (e.pos < 60 || e.done || (e.dur && e.pos > e.dur * 0.94))) return;
+            if (!e.upNext && (e.pos < 60 || e.done || finished(e.pos, e.dur, !e.series && !e.ep))) return;
             var it = (merged && (merged.movies.byId[e.item] || merged.series.byId[e.item])) || virtualById(e.item);
             if (it && !isHidden(it)) out.push({ item: it, resume: e, key: k });
         });
@@ -1431,12 +1465,48 @@
         return t.replace(/^[\s\-:|.]+/, "").trim();
     }
 
+    /* Each title's searchable form, made once and kept on it (#40: every letter typed folded the 174,000 titles of an
+       account again, seconds each on a Fire TV 4K Max, and its keyboard froze). Made ahead, a slice at a time, when
+       Search opens (prefold). */
+    function folded(x) {
+        var n = x.title || x.name, o = x.orig || "";
+        if (x._fn !== n || x._fo !== o) { x._f = S.fold(n) + (o ? " " + S.fold(o) : ""); x._fn = n; x._fo = o; }      // a channel you renamed: found by both names
+        return x._f;
+    }
+    var prefolding = null;
+    function prefold() {
+        if (prefolding || !merged) return;
+        var lists = [merged.live.chans, merged.movies.items, merged.series.items], li = 0, i = 0, t0 = Date.now(), m = merged;
+        var me = prefolding = {};
+        (function slice() {
+            if (prefolding !== me) return;                                 // let go (unfold): made again next time
+            if (m !== merged) { prefolding = null; return; }               // a new catalog: started again next time
+            var end = Date.now() + 25;
+            while (li < lists.length && Date.now() < end) {
+                var l = lists[li];
+                for (var k = 0; k < 200 && i < l.length; k++) folded(l[i++]);
+                if (i >= l.length) { li++; i = 0; }
+            }
+            if (li < lists.length) { setTimeout(slice, 0); return; }
+            prefolding = null;
+            TV.log("search ready: " + (lists[0].length + lists[1].length + lists[2].length) + " titles in " + (Date.now() - t0) + " ms");
+        })();
+    }
+    /* The searchable forms let go (a big account's full refresh: its memory peak closed Samsung TVs, crash report
+       #44 with 290,000 titles, and these forms are some 15 MB of it) */
+    function unfold() {
+        if (!merged) return;
+        prefolding = null;
+        [merged.live.chans, merged.movies.items, merged.series.items].forEach(function (l) {
+            for (var i = 0; i < l.length; i++) if (l[i]._f) l[i]._f = l[i]._fn = l[i]._fo = undefined;
+        });
+    }
     function search(q, limit) {
         q = S.fold(q);
         if (!q || !merged) return { live: [], movies: [], series: [] };
         var words = q.split(" "), adult = TV.pref("showAdult"), hid = anyHidden();
-        function match(name, also) {
-            var f = S.fold(name) + (also ? " " + S.fold(also) : "");             // a channel you renamed: found by both names
+        function match(x) {
+            var f = folded(x);
             for (var i = 0; i < words.length; i++) if (f.indexOf(words[i]) === -1) return false;
             return true;
         }
@@ -1444,7 +1514,7 @@
             var out = [];
             for (var i = 0; i < arr.length && out.length < (limit || 40); i++) {
                 var x = arr[i];
-                if ((adult || !catOf(x).adult) && match(x.title || x.name, x.orig) && (!hid || !isHidden(x))) out.push(x);
+                if ((adult || !catOf(x).adult) && match(x) && (!hid || !isHidden(x))) out.push(x);
             }
             return out;
         }
@@ -1470,7 +1540,7 @@
     restoreThemes();            // the titles already known for your hidden themes, before anything is drawn
     TV.data = {
         sources: sources, addSource: addSource, removeSource: removeSource, updateSource: updateSource, normServer: normServer, xtreamFromUrl: xtreamFromUrl,
-        loadSource: loadSource, start: start, refresh: refresh, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
+        loadSource: loadSource, finished: finished, start: start, refresh: refresh, prefold: prefold, big: function () { return Object.keys(cats).some(function (k) { return big(cats[k]); }); }, loadingOf: function (id) { return loading[id] || null; }, catalogOf: function (id) { return cats[id] || null; }, onChange: onChange, rebuild: rebuild, xAuth: xAuth, regroup: function () { groupCache = {}; },
         stillComing: function (id) { return !!behind[id]; },
         catalog: function () { return merged; },
         channelsIn: channelsIn, channelsNamed: channelsNamed, channel: channel, streamUrl: streamUrl, catOf: catOf, sourceOf: sourceOf,

@@ -125,9 +125,23 @@
        of good playback the count starts again. Nothing is reopened while the picture moves. */
     var tickAt = 0, started = false, attempts = 0, goodSince = 0, stallTimer = null, retryTimer = null, bufAt = 0, userPaused = false;
     var DELAYS = [800, 2000, 4000, 6000, 8000];
+    /* The provider refused the connection (#27: an account for one screen, the stream just closed still counted by the
+       provider for a while, at the next episode or after a stutter): longer waits, about a minute in all */
+    var BUSY_DELAYS = [3000, 6000, 10000, 15000, 20000];
+    function refusedConn(why) { return /CONNECTION_FAILED|InvalidAccess|CONNECTION/i.test(String(why || "")); }
+    /* #27 again: an episode left before its end (Next pressed), and the provider counted it some five minutes more. The
+       next episode was refused, then every channel of that provider, until then; APL TV gave up after a minute. Right
+       after a video of the same server was left, a refusal is tried again for about five minutes, and said. */
+    var LEFT_DELAYS = [3000, 7000, 15000, 25000, 40000, 60000, 60000, 60000];
+    var left = null;                                           // { host, at }: the last video that played, when it was closed
+    function hostOf(u) { var m = /^https?:\/\/([^\/?#]+)/i.exec(String(u || "")); return m ? m[1].toLowerCase() : ""; }
+    function noteLeft() { if (cur && started && !cur.failed && hostOf(cur.url)) left = { host: hostOf(cur.url), at: Date.now() }; }
+    function justLeft(u) { return !!left && Date.now() - left.at < 6 * 60000 && left.host === hostOf(u); }
+    var retrying = null;          // the stream a retry is already planned for: its other errors of the moment count once
     /* A stream given up: Samsung's player is closed at once, never left open behind the message. A player left in
        error could keep the TV's decoder, and every app failed to play until the TV was restarted (#27). */
     function fail(why) {
+        if (cur && cur.failed) return;                         // one message for one stream given up
         if (cur) cur.failed = true;
         clearTimeout(watchdog); clearTimeout(retryTimer);
         closeAv();
@@ -136,16 +150,30 @@
     function reconnect(why) {
         if (!cur) return;
         var c = cur;
-        if (attempts >= DELAYS.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(why); return; }
-        var wait = DELAYS[attempts++];
+        // Samsung's player says one failure two or three times (an error, then the prepare failing): one try (#27: the five
+        // tries were used up in 8 s)
+        if (retrying === c || c.failed) return;               // and once given up, the rest of its errors are not said again
+        var held = refusedConn(why) && justLeft(c.url), list = held ? LEFT_DELAYS : refusedConn(why) ? BUSY_DELAYS : DELAYS;
+        if (attempts >= list.length) { TV.log("giving up after " + attempts + " reconnections (" + why + ")"); fail(held ? "held " + why : why); return; }
+        if (held && !c.heldSaid) {
+            c.heldSaid = true;
+            TV.log("refused right after a video of this server was left: the provider may still count it, trying for about 5 minutes");
+            TV.toast(TV.t("Your provider still counts the video you just left. APL TV keeps trying for a few minutes."));
+        }
+        var wait = list[attempts++];
+        retrying = c;
         TV.log("reconnecting (" + why + "), attempt " + attempts + " in " + wait + " ms");
         emit("onReconnect", attempts);
         closeAv();
         clearTimeout(retryTimer);
         retryTimer = setTimeout(function () {
+            retrying = null;
             if (cur !== c) return;
             var o = c.opts;
             if (!o.live && lastTime > 0) o.start = lastTime / 1000;
+            /* A portal's stream is asked for again: its link's token was spent or ran out, and reopening it gave "start
+               timeout" five times (#36: a channel or an episode stopped, and only changing channel and back played it) */
+            if (/^stalker:/.test(o._via || "")) { TV.log("asking the portal for a new link"); play(o._via, o); return; }
             open(c.url, o, true);
         }, wait);
     }
@@ -200,6 +228,13 @@
     function fp(url) { var h = 0, s = String(url); for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return String(h); }
     function knownUhd(url) { return !!(TV.load("uhd", {}) || {})[fp(url)]; }
     function rememberUhd(url) { var m = TV.load("uhd", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("uhd", m); }
+    /* And the ones Samsung's player refused in 4K mode ("prepare failed InvalidAccessError" five times, #27: M6 and
+       France 2, named 4K, on a UA50AU7000) but played without it: opened without it next time */
+    function knownNoUhd(url) { return !!(TV.load("noUhd", {}) || {})[fp(url)]; }
+    function rememberNoUhd(url) {
+        var m = TV.load("noUhd", {}) || {}, k = Object.keys(m); if (k.length > 400) delete m[k[0]]; m[fp(url)] = 1; TV.save("noUhd", m);
+        var u = TV.load("uhd", {}) || {}; if (u[fp(url)]) { delete u[fp(url)]; TV.save("uhd", u); }
+    }
     /* LG: channels whose MPEG-TS it refused are opened in HLS straight away next time */
     function toHls(url) { return String(url).replace(/\.ts(\?|$)/i, ".m3u8$1"); }
     function knownHls(url) { return !!(TV.load("hlsOnly", {}) || {})[fp(url)]; }
@@ -207,6 +242,7 @@
     function play(url, opts) {
         opts = opts || {};
         loggedTracks = false;
+        if (!cur || cur.url !== url) noteLeft();
         // A Stalker portal's channel or movie, a media server's (Jellyfin, Emby, Plex), a Stremio title or a public
         // domain movie: its real link is asked first (a portal's lasts a short time only; a server's carries its key;
         // Stremio's addons are asked for their streams, chosen in a list)
@@ -223,6 +259,7 @@
         }
         attempts = 0;
         if (!opts.uhd && knownUhd(url)) opts.uhd = true;
+        if (opts.uhd && TV.TIZEN && knownNoUhd(url)) { opts.uhd = false; opts._was4k = true; }
         if (TV.WEBOS && /\.ts(\?|$)/i.test(url) && knownHls(url)) { opts._hls = true; url = toHls(url); }
         // A movie or an episode in .mkv: its tracks' languages and names read from the file first, the player closed
         // meanwhile, so the provider sees one connection at a time (js/mkv.js, #34)
@@ -304,7 +341,8 @@
                         started = true; goodSince = Date.now();
                         var si = streamInfo();
                         if (si) TV.log("picture " + si.w + "x" + si.h + " " + si.codec + " " + si.fps + "fps");
-                        if (si && si.w >= 3000 && !opts.uhd && canUhd() && TV.TIZEN) {
+                        if (opts._try2k) { opts._try2k = false; rememberNoUhd(url); TV.log("plays without the 4K mode: remembered"); }
+                        if (si && si.w >= 3000 && !opts.uhd && !opts._was4k && canUhd() && TV.TIZEN) {
                             // a 4K picture without Samsung's 4K mode: opened again in 4K mode, where it was
                             TV.log("4K stream without the 4K mode: opened again in 4K mode");
                             opts.uhd = true; rememberUhd(url);
@@ -323,7 +361,8 @@
                 onerror: function (type) {
                     if (!cur || cur.token !== my) return;
                     TV.log("avplay error " + type);
-                    if (started || opts.live) reconnect(String(type)); else fail(String(type));
+                    // a movie's first open the provider refused (the episode before still counted): tried again too (#27)
+                    if (started || opts.live || refusedConn(type)) reconnect(String(type)); else fail(String(type));
                 },
                 onevent: function (type, data) { if (type !== "PLAYER_MSG_RESOLUTION_CHANGED") TV.log("avplay event " + type + " " + (data || "")); },
                 onsubtitlechange: function (dur, text) { if (cur && cur.token === my) emit("onSubtitle", { text: text, dur: +dur || 0 }); },
@@ -352,8 +391,10 @@
                 if (!cur || cur.token !== my) return;
                 var why = String(err && (err.name || err.message) || err);
                 TV.log("prepare failed " + why);
+                // refused in 4K mode: the next try without it, once; remembered if it plays then (#27)
+                if (opts.uhd && TV.TIZEN && !opts._was4k) { opts.uhd = false; opts._was4k = true; opts._try2k = true; TV.log("next try without the 4K mode"); }
                 // a movie that cannot open: its error stays, the start timer does not add a "timeout" later
-                if (again || opts.live) reconnect("prepare " + why); else fail(why);
+                if (again || opts.live || refusedConn(why)) reconnect("prepare " + why); else fail(why);
             });
         } catch (e) {
             TV.log("open failed " + e.message);
@@ -362,6 +403,7 @@
     }
 
     function stop() {
+        noteLeft();
         token++;
         clearTimeout(watchdog); clearTimeout(retryTimer); clearInterval(stallTimer);
         closeAv();

@@ -35,7 +35,9 @@ While a channel plays full screen, **OK or ◀** opens the channel list. In this
 - **A Trailer button on a movie's or a series' page**, right after Play, when TMDB knows a trailer
   of the title on YouTube: the one in your language, else the English one. OK plays it inside
   APL TV with the remote (OK pauses, ◀ ▶ 10 s, Back comes back to the page). A trailer YouTube
-  keeps for itself opens in the screen's YouTube app instead. Needs a TMDB key.
+  keeps for itself opens in the screen's YouTube app instead. Needs a TMDB key. The project has had a
+  Trailer button of its own since 1.4.8: this one stands in its place (`app/js/detail.js`), so the page
+  has only one.
 - **Your provider's categories one press away, in Movies and in Series.** A chip right after
   Sort holds the provider's own categories in your language only ("FR · Nouveautes",
   "FR · Comedie"…; every one when the provider names no language). It shows the one you are on,

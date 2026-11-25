@@ -20,7 +20,7 @@
     /* ---------- EBML, Matroska's way of writing: an id, a size, then the content ---------- */
     var ID = { EBML: 0x1A45DFA3, SEGMENT: 0x18538067, TRACKS: 0x1654AE6B, CLUSTER: 0x1F43B675, ENTRY: 0xAE,
                NUMBER: 0xD7, TYPE: 0x83, CODEC: 0x86, NAME: 0x536E, LANG: 0x22B59C, BCP47: 0x22B59D,
-               DEFAULT: 0x88, FORCED: 0x55AA };
+               DEFAULT: 0x88, FORCED: 0x55AA, ENABLED: 0xB9 };
 
     /* One number at b[p]: { v, next }. A size of all ones is unknown (Infinity). null: the bytes stop first. */
     function vint(b, p, n, isId) {
@@ -61,7 +61,7 @@
         walk(b, s, e, function (id, cs, ce) {
             if (id !== ID.ENTRY) return;
             // No Language element means English (Matroska's default); LanguageBCP47, when there, is the one to read
-            var t = { num: 0, type: 0, codec: "", name: "", lang: "eng", forced: false, def: true }, bcp = "";
+            var t = { num: 0, type: 0, codec: "", name: "", lang: "eng", forced: false, def: true, on: true }, bcp = "";
             walk(b, cs, ce, function (k, ks, ke) {
                 if (k === ID.NUMBER) t.num = uint(b, ks, ke);
                 else if (k === ID.TYPE) t.type = uint(b, ks, ke);
@@ -71,6 +71,7 @@
                 else if (k === ID.BCP47) bcp = utf8(b, ks, ke).trim();
                 else if (k === ID.FORCED) t.forced = uint(b, ks, ke) === 1;
                 else if (k === ID.DEFAULT) t.def = uint(b, ks, ke) === 1;
+                else if (k === ID.ENABLED) t.on = uint(b, ks, ke) !== 0;
             });
             if (bcp) t.lang = bcp;
             if (t.type === 2) out.audio.push(t);
@@ -117,7 +118,7 @@
                 try { x.abort(); } catch (e) {}
                 remember(url, info || null);
                 if (info) TV.log("mkv: " + info.audio.length + " audio and " + info.subs.length + " subtitle tracks read from the file in " + (Date.now() - t0) + " ms: " +
-                                 info.subs.map(function (s) { return s.lang + (s.name ? " " + s.name : ""); }).join(", ").slice(0, 400));
+                                 info.subs.map(function (s) { return s.lang + (s.name ? " " + s.name : "") + " (" + String(s.codec || "?").replace(/^S_/, "") + (s.on ? "" : ", off") + ")"; }).join(", ").slice(0, 400));
                 else TV.log("mkv: track names not read (" + why + ")");
                 resolve(info || null);
             }
@@ -139,7 +140,10 @@
                 x.setRequestHeader("Range", "bytes=0-" + (MAX - 1));             // a server that ignores it is cut at 1 MB
                 x.onreadystatechange = function () {
                     if (over) return;
-                    if (x.readyState >= 2 && x.status && x.status !== 200 && x.status !== 206) { end(null, "HTTP " + x.status); return; }
+                    if (x.readyState >= 2 && x.status && x.status !== 200 && x.status !== 206) {
+                        if (/^(401|403|429|458|509)$/.test(String(x.status))) busyHosts[hostOf(url)] = 1;
+                        end(null, "HTTP " + x.status); return;
+                    }
                     if (x.readyState === 3) look(false);
                     else if (x.readyState === 4) { if (!x.status) end(null, "refused"); else look(true); }
                 };
@@ -153,8 +157,13 @@
        just before playing for a Stremio stream, a media server's file or a public domain movie: those are good for
        more than one request (1.4.2 left them out, and a film from one of them had no names, #34). Not a Stalker
        portal's: it can be good for one request only. An .mkv not read says why in the log, a link read before too. */
+    /* A server that answered "too many connections" or refused the read (#27: HTTP 458 on an account for one screen): its
+       files are no longer read first, the player alone asks for them */
+    var busyHosts = {};
+    function hostOf(u) { var m = /^https?:\/\/([^\/?#]+)/i.exec(String(u || "")); return m ? m[1].toLowerCase() : ""; }
     function wanted(url, opts) {
         if (opts && opts.live) return false;
+        if (busyHosts[hostOf(url)]) { TV.log("mkv: track names not read (this server refused it before, the player alone asks)"); return false; }
         if (!/^https?:\/\/[^?#]+\.mkv([?#]|$)/i.test(String(url || ""))) {
             // what the link ends with, so a film that should have been read can be told (#34: a second film, from the same
             // Xtream account, had no "mkv:" line at all)
@@ -176,6 +185,7 @@
         tv.forEach(function (t, i) {
             if (!t.lang && file[i].lang) t.lang = file[i].lang;
             if (!t.name && file[i].name) t.name = file[i].name;
+            if (file[i].forced) t.forced = true;           // "Forced" in the file (#45)
         });
     }
     /* The player's tracks ({ type: "AUDIO"|"TEXT", lang, name }) completed from the file: what the TV leaves empty,
@@ -185,7 +195,20 @@
         if (!info) return list;
         var audio = list.filter(function (t) { return t.type === "AUDIO"; }), text = list.filter(function (t) { return t.type === "TEXT"; });
         put(audio, info.audio);
-        put(text, info.subs.length === text.length ? info.subs : info.subs.filter(function (s) { return /^S_TEXT\//.test(s.codec); }));
+        /* The file's subtitles that match the TV's list: all of them, or the text ones (the TV skips pictures: PGS,
+           VobSub), or the ones not turned off. None the same length (#34: 2 in the file, 1 on the TV): when they all
+           speak one language, that language goes on every one the TV lists, without a name. */
+        /* Or the plain text ones (SRT, WebVTT): a Samsung TV skips the styled ASS and SSA ones too (#34: German in ASS and
+           English in SRT in the file, the TV's one subtitle was the English one) */
+        var isText = function (x) { return /^S_TEXT\//.test(x.codec); }, isOn = function (x) { return x.on !== false; };
+        var isPlain = function (x) { return /^S_TEXT\/(UTF8|ASCII|WEBVTT)$/i.test(x.codec); };
+        var ways = [info.subs, info.subs.filter(isText), info.subs.filter(function (x) { return isText(x) && isOn(x); }), info.subs.filter(isPlain),
+            info.subs.filter(function (x) { return isPlain(x) && isOn(x); }), info.subs.filter(isOn)];
+        for (var w = 0; w < ways.length; w++) if (ways[w].length === text.length) { put(text, ways[w]); return list; }
+        var langs = {};
+        (info.subs.filter(isText).length ? info.subs.filter(isText) : info.subs).forEach(function (x) { if (x.lang) langs[x.lang] = 1; });
+        var one = Object.keys(langs);
+        if (one.length === 1) text.forEach(function (t) { if (!t.lang) t.lang = one[0]; });
         return list;
     }
 
